@@ -1,0 +1,10 @@
+project_id = "jade-file-finder"
+
+[functions.search]
+verify_jwt = false
+
+[functions.file]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false
