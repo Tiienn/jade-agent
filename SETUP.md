@@ -2,18 +2,20 @@
 
 Welcome! This guide walks you through getting Jade File Finder live, one step at a time. You can copy and paste every command exactly as written. Where you need to fill in your own value, it's written in `CAPITAL_LETTERS` so it's easy to spot.
 
+> **Where things stand (10 July 2026):** the app is fully built, you're already logged in to both the Supabase and Vercel CLIs, and a Supabase **organization named "Jade Group"** already exists in your account — pick it when creating the project in step 1b. Your free plan allows 2 active projects; "Auto Ecole" is paused, so a slot should be free (if creation still complains about the limit, pause or delete another project, or upgrade the plan). Start at step 1b.
+
 **Before you start, you should have:**
 
 - A Mac.
 - The **Supabase CLI** and **Vercel CLI** already installed. (If a command below ever says "command not found", that tool isn't installed yet — reach out to whoever set up your machine.)
-- This project's code on your computer at `~/jade-file-finder` (the `~` is a shortcut for your home folder).
+- This project's code on your computer at `~/projects/jade-agent` (the `~` is a shortcut for your home folder).
 
 A quick vocabulary note so nothing is a surprise:
 
 - **Supabase** is the service that stores your accounts, your list of buildings, and the log of every search. Think of it as the app's filing cabinet and security guard.
 - **Vercel** is the service that puts the actual website online so staff can open it in a browser.
 - **Terminal** is the Mac app where you paste commands. Open it from Applications → Utilities → Terminal, or press `Cmd + Space`, type "Terminal", and press Return.
-- The **`~/jade-file-finder`** folder is where all the code lives. Several commands below start by moving into it with `cd ~/jade-file-finder` ("cd" just means "change directory").
+- The **`~/projects/jade-agent`** folder is where all the code lives. Several commands below start by moving into it with `cd ~/projects/jade-agent` ("cd" just means "change directory").
 
 Take these sections in order. You only do steps 1, 2, and 4 once. Step 3 is your very first login, and step 5 is your day-to-day.
 
@@ -45,7 +47,7 @@ This opens your web browser and asks you to sign in / authorize. Once it says yo
 **1d. Connect this code to your project.** In Terminal:
 
 ```
-cd ~/jade-file-finder
+cd ~/projects/jade-agent
 supabase link --project-ref YOUR_PROJECT_REF_HERE
 ```
 
@@ -73,7 +75,7 @@ supabase functions deploy search file admin-users --no-verify-jwt
 Now create a file that tells the website about them. In Terminal:
 
 ```
-cd ~/jade-file-finder
+cd ~/projects/jade-agent
 cp .env.example .env 2>/dev/null || touch .env
 open -e .env
 ```
@@ -159,7 +161,7 @@ supabase secrets list
 
 You don't create the first account from a command line — the app does it for you, once.
 
-1. Open the app in your browser. (During setup you can run it locally with `npm run dev` from `~/jade-file-finder`; after step 4 it'll have a real web address.)
+1. Open the app in your browser. (During setup you can run it locally with `npm run dev` from `~/projects/jade-agent`; after step 4 it'll have a real web address.)
 2. Because no admin exists yet, the app shows a one-time **"Create admin"** screen.
 3. Pick a **username** and a **password** for yourself and submit.
 
@@ -174,7 +176,7 @@ Now we publish the actual website so staff can open it from anywhere.
 **4a. Deploy it.** In Terminal:
 
 ```
-cd ~/jade-file-finder
+cd ~/projects/jade-agent
 vercel
 ```
 
