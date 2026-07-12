@@ -3,6 +3,7 @@ dist
 dist-ssr
 *.local
 *.tsbuildinfo
+supabase/.temp
 .env
 .env.*
 !.env.example
