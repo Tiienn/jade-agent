@@ -174,8 +174,11 @@ export async function getDownloadInfo(
   itemId: string,
 ): Promise<DownloadInfo> {
   const token = await getGraphToken();
+  // No $select here: @microsoft.graph.downloadUrl is a computed property that
+  // Graph omits from the response whenever $select is used, even if the field
+  // is explicitly listed. Fetching the full item is the only way to get it.
   const res = await fetch(
-    `${GRAPH}/drives/${driveId}/items/${itemId}?$select=name,size,file,@microsoft.graph.downloadUrl`,
+    `${GRAPH}/drives/${driveId}/items/${itemId}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) await throwGraph(res);
