@@ -163,9 +163,11 @@ export default function Search() {
 
   return (
     <div
-      className={`mx-auto w-full max-w-3xl ${hasResults ? 'lg:max-w-6xl' : ''}`}
+      className={`mx-auto flex h-full w-full max-w-3xl flex-col overflow-y-auto p-4 sm:p-6 lg:overflow-hidden ${
+        hasResults ? 'lg:max-w-6xl' : ''
+      }`}
     >
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-3xl shrink-0">
         {/* Search bar */}
         <form onSubmit={handleSubmit} className="mt-2">
           <div className="relative">
@@ -313,8 +315,8 @@ export default function Search() {
 
       {/* Results + preview pane */}
       {!loading && results && results.length > 0 && (
-        <div className="mt-3 lg:grid lg:grid-cols-5 lg:items-start lg:gap-6">
-          <ul className="space-y-3 lg:col-span-2">
+        <div className="mt-3 min-h-0 flex-1 lg:grid lg:grid-cols-5 lg:gap-6">
+          <ul className="space-y-3 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             {results.map((file) => (
               <ResultRow
                 key={file.id}
@@ -329,8 +331,8 @@ export default function Search() {
 
           {/* Desktop preview pane */}
           {isDesktop && (
-            <div className="lg:col-span-3">
-              <div className="sticky top-6 flex h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <div className="lg:col-span-3 lg:h-full lg:min-h-0">
+              <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
                 {selected ? (
                   <>
                     <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">

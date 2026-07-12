@@ -1,121 +1,235 @@
-import { useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Settings, LogOut, Menu, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Search as SearchIcon,
+  LayoutDashboard,
+  Users as UsersIcon,
+  Settings as SettingsIcon,
+  LogOut,
+  Menu,
+  X,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import Logo from './Logo'
 
-const ADMIN_LINKS = [
+interface NavItem {
+  to: string
+  label: string
+  icon: typeof SearchIcon
+  end: boolean
+}
+
+const SEARCH_LINK: NavItem = {
+  to: '/',
+  label: 'Search',
+  icon: SearchIcon,
+  end: true,
+}
+
+const ADMIN_LINKS: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/users', label: 'Users', icon: Users, end: false },
-  { to: '/admin/settings', label: 'Settings', icon: Settings, end: false },
+  { to: '/admin/users', label: 'Users', icon: UsersIcon, end: false },
+  { to: '/admin/settings', label: 'Settings', icon: SettingsIcon, end: false },
 ]
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+function navLinkClass({ isActive }: { isActive: boolean }) {
+  return `relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-jade-50 text-jade-700'
+      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+  }`
+}
+
+function NavLinkItem({
+  item,
+  onNavigate,
+}: {
+  item: NavItem
+  onNavigate?: () => void
+}) {
+  const { to, label, icon: Icon, end } = item
+  return (
+    <NavLink to={to} end={end} onClick={onNavigate} className={navLinkClass}>
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <span
+              className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-jade-600"
+              aria-hidden="true"
+            />
+          )}
+          <Icon size={18} />
+          {label}
+        </>
+      )}
+    </NavLink>
+  )
+}
+
+/** Full sidebar column — reused by the desktop rail and the mobile drawer. */
+function SidebarInner({
+  onNavigate,
+  onClose,
+}: {
+  onNavigate?: () => void
+  onClose?: () => void
+}) {
   const { profile, logout } = useAuth()
   const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
   const isAdmin = profile?.role === 'admin'
 
   async function handleLogout() {
-    setMenuOpen(false)
+    onNavigate?.()
     await logout()
     navigate('/login', { replace: true })
   }
 
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-      isActive
-        ? 'bg-jade-50 text-jade-700'
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-    }`
+  return (
+    <div className="flex h-full flex-col">
+      {/* Brand */}
+      <div className="flex h-16 shrink-0 items-center justify-between px-4">
+        <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5">
+          <Logo size={28} />
+          <span className="text-base font-semibold tracking-tight text-gray-900">
+            Jade File Finder
+          </span>
+        </Link>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Close menu"
+          >
+            <X size={22} />
+          </button>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
+        <NavLinkItem item={SEARCH_LINK} onNavigate={onNavigate} />
+        {isAdmin && (
+          <>
+            <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Admin
+            </p>
+            {ADMIN_LINKS.map((item) => (
+              <NavLinkItem key={item.to} item={item} onNavigate={onNavigate} />
+            ))}
+          </>
+        )}
+      </nav>
+
+      {/* User + logout */}
+      <div className="shrink-0 border-t border-gray-200 p-3">
+        {profile && (
+          <div className="px-2 pb-2">
+            <p className="truncate text-sm font-medium text-gray-900">
+              {profile.display_name}
+            </p>
+            <p className="text-xs capitalize text-gray-400">{profile.role}</p>
+          </div>
+        )}
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+        >
+          <LogOut size={18} />
+          Logout
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const location = useLocation()
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const lastFocusRef = useRef<HTMLElement | null>(null)
+
+  // Close the drawer whenever the route changes.
+  useEffect(() => {
+    setDrawerOpen(false)
+  }, [location.pathname])
+
+  // Keep the closed drawer out of the tab order / interaction across breakpoints.
+  useEffect(() => {
+    drawerRef.current?.toggleAttribute('inert', !drawerOpen)
+  }, [drawerOpen])
+
+  // Escape-to-close and focus management for the open drawer.
+  useEffect(() => {
+    if (!drawerOpen) return
+    lastFocusRef.current = document.activeElement as HTMLElement | null
+    drawerRef.current?.querySelector<HTMLElement>('a, button')?.focus()
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      lastFocusRef.current?.focus?.()
+    }
+  }, [drawerOpen])
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50">
-      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4">
-          <Link to="/" className="flex items-center gap-2.5">
-            <Logo size={28} />
-            <span className="text-base font-semibold tracking-tight text-gray-900">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      {/* Desktop sidebar */}
+      <aside className="hidden w-60 shrink-0 border-r border-gray-200 bg-white lg:block">
+        <SidebarInner />
+      </aside>
+
+      {/* Mobile drawer backdrop */}
+      <div
+        className={`fixed inset-0 z-30 bg-gray-900/40 transition-opacity lg:hidden ${
+          drawerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        onClick={() => setDrawerOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Mobile drawer panel */}
+      <div
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-gray-200 bg-white shadow-xl transition-transform lg:hidden ${
+          drawerOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <SidebarInner
+          onNavigate={() => setDrawerOpen(false)}
+          onClose={() => setDrawerOpen(false)}
+        />
+      </div>
+
+      {/* Content column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Mobile top bar */}
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 lg:hidden">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Open menu"
+            aria-expanded={drawerOpen}
+          >
+            <Menu size={22} />
+          </button>
+          <Link to="/" className="flex items-center gap-2">
+            <Logo size={24} />
+            <span className="text-sm font-semibold tracking-tight text-gray-900">
               Jade File Finder
             </span>
           </Link>
+        </header>
 
-          {/* Desktop nav */}
-          <nav className="hidden items-center gap-1 sm:flex">
-            {isAdmin &&
-              ADMIN_LINKS.map(({ to, label, icon: Icon, end }) => (
-                <NavLink key={to} to={to} end={end} className={navLinkClass}>
-                  <Icon size={16} />
-                  {label}
-                </NavLink>
-              ))}
-            {profile && (
-              <span className="ml-2 mr-1 hidden text-sm text-gray-500 md:inline">
-                {profile.display_name}
-              </span>
-            )}
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-            >
-              <LogOut size={16} />
-              Logout
-            </button>
-          </nav>
-
-          {/* Mobile menu toggle */}
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 sm:hidden"
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={menuOpen}
-          >
-            {menuOpen ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-
-        {/* Mobile menu */}
-        {menuOpen && (
-          <nav className="border-t border-gray-200 bg-white px-4 py-3 sm:hidden">
-            {profile && (
-              <p className="px-1 pb-2 text-sm text-gray-500">
-                Signed in as{' '}
-                <span className="font-medium text-gray-700">
-                  {profile.display_name}
-                </span>
-              </p>
-            )}
-            {isAdmin &&
-              ADMIN_LINKS.map(({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  onClick={() => setMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium ${
-                      isActive
-                        ? 'bg-jade-50 text-jade-700'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`
-                  }
-                >
-                  <Icon size={18} />
-                  {label}
-                </NavLink>
-              ))}
-            <button
-              onClick={handleLogout}
-              className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            >
-              <LogOut size={18} />
-              Logout
-            </button>
-          </nav>
-        )}
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

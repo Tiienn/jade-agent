@@ -243,7 +243,7 @@ export default function Dashboard() {
   }, [loadLogs])
 
   return (
-    <div>
+    <div className="mx-auto h-full max-w-5xl overflow-y-auto p-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-gray-900">
           Activity
