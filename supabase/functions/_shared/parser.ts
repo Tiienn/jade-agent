@@ -4,7 +4,15 @@
 // { building, keyword tokens, category, picsMode }. Order-independent and
 // forgiving of dashes, slashes and filler words.
 
-export type Category = "pdf" | "dwg" | "images" | "plan" | "all";
+export type Category =
+  | "pdf"
+  | "dwg"
+  | "images"
+  | "plan"
+  | "word"
+  | "excel"
+  | "psd"
+  | "all";
 
 export interface BuildingRef {
   code: string;
@@ -69,6 +77,17 @@ const CATEGORY_WORDS: Record<string, Category> = {
   plans: "plan",
   drawing: "plan",
   drawings: "plan",
+  word: "word",
+  doc: "word",
+  docx: "word",
+  docs: "word",
+  excel: "excel",
+  xls: "excel",
+  xlsx: "excel",
+  sheet: "excel",
+  spreadsheet: "excel",
+  psd: "psd",
+  photoshop: "psd",
   all: "all",
   everything: "all",
   anything: "all",

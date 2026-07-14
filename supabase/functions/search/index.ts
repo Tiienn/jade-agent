@@ -12,6 +12,7 @@ import {
   listChildren,
   searchInFolder,
 } from "../_shared/graph.ts";
+import { normalizePath } from "../_shared/paths.ts";
 import type { FileResult } from "../_shared/types.ts";
 
 interface BuildingRow {
@@ -32,6 +33,18 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     const rawQuery = typeof body.query === "string" ? body.query : "";
     const override = normalizeCategory(body.category);
+
+    // Scoped search: search within the folder the user is currently browsing.
+    // A present array (even empty = project root) triggers this mode.
+    if (Array.isArray(body.scopePath)) {
+      return await scopedSearch({
+        rawQuery,
+        override,
+        scopePath: normalizePath(body.scopePath),
+        userId: user.id,
+        username: profile.username,
+      });
+    }
 
     const svc = serviceClient();
     const { data: buildingsData, error: bErr } = await svc
@@ -118,10 +131,80 @@ Deno.serve(async (req: Request) => {
   }
 });
 
+interface ScopedSearchArgs {
+  rawQuery: string;
+  override: Category | undefined;
+  scopePath: string[];
+  userId: string;
+  username: string;
+}
+
+/**
+ * Search within the folder the user is currently browsing. No building
+ * matching (empty buildings list) and no picsMode — the whole input minus
+ * filler/category words is the keyword, scoped to project-root/scopePath.
+ */
+async function scopedSearch(args: ScopedSearchArgs): Promise<Response> {
+  const { rawQuery, override, scopePath, userId, username } = args;
+
+  // No building matching: the query minus filler/category is the keyword.
+  const parsed = parseQuery(rawQuery, [], override);
+
+  if (parsed.keywordTokens.length === 0) {
+    return jsonResponse(
+      { error: "Type something to search for.", code: "NO_KEYWORD" },
+      400,
+    );
+  }
+
+  const driveId = await getDriveId();
+  const fullPath = [getProjectRoot(), ...scopePath].join("/");
+  const folder = await getFolderByPath(driveId, fullPath);
+  if (!folder) {
+    return jsonResponse(
+      {
+        error:
+          `Folder not found: ${["Project", ...scopePath].join("/")}. It may ` +
+          `have been moved or renamed.`,
+      },
+      400,
+    );
+  }
+
+  const results = await normalSearch(
+    driveId,
+    folder.id as string,
+    parsed.keywordTokens,
+    parsed.category,
+  );
+
+  // Sort: folders first, then most-recently-modified.
+  results.sort((a, b) => {
+    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+    return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
+  });
+
+  const capped = results.slice(0, 100);
+
+  // Audit log (service role — client inserts are blocked by RLS). Record the
+  // browsed scope alongside the parsed query.
+  const svc = serviceClient();
+  await svc.from("search_logs").insert({
+    user_id: userId,
+    username,
+    query: rawQuery,
+    parsed: { ...parsed, scopePath },
+    result_count: capped.length,
+  });
+
+  return jsonResponse({ parsed, count: capped.length, results: capped });
+}
+
 function normalizeCategory(value: unknown): Category | undefined {
   if (
     value === "pdf" || value === "dwg" || value === "images" ||
-    value === "plan" || value === "all"
+    value === "plan" || value === "word" || value === "excel" ||
+    value === "psd" || value === "all"
   ) {
     return value;
   }
@@ -187,6 +270,18 @@ async function normalSearch(
             .split("/")
             .some((seg) => seg.trim().toLowerCase().startsWith("plan"))
         );
+      case "word":
+        return (
+          it.extension === "doc" || it.extension === "docx" ||
+          it.extension === "rtf"
+        );
+      case "excel":
+        return (
+          it.extension === "xls" || it.extension === "xlsx" ||
+          it.extension === "xlsm" || it.extension === "csv"
+        );
+      case "psd":
+        return it.extension === "psd" || it.extension === "psb";
       default:
         return true; // 'all'
     }

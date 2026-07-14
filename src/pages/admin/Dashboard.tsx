@@ -50,6 +50,9 @@ const CATEGORY_LABEL: Record<Category, string> = {
   dwg: 'DWG',
   images: 'Images',
   plan: 'Plans',
+  word: 'Word',
+  excel: 'Excel',
+  psd: 'PSD',
 }
 
 function startOfToday(): Date {

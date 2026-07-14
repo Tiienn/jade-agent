@@ -12,6 +12,7 @@ import {
   getProjectRoot,
   listChildren,
 } from "../_shared/graph.ts";
+import { normalizePath } from "../_shared/paths.ts";
 import type { FileResult } from "../_shared/types.ts";
 
 Deno.serve(async (req: Request) => {
@@ -71,31 +72,6 @@ function sortEntries(entries: FileResult[]): FileResult[] {
     if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
-}
-
-/**
- * Validate and normalize path: must be absent or an array of non-empty strings.
- * Each segment is trimmed and must not contain '/', '\' or '..' (prevents path
- * traversal outside the project root).
- */
-function normalizePath(value: unknown): string[] {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    throw new HttpError(400, "path must be an array of folder names.");
-  }
-  const out: string[] = [];
-  for (const raw of value) {
-    if (typeof raw !== "string") {
-      throw new HttpError(400, "path must be an array of folder names.");
-    }
-    const seg = raw.trim();
-    if (!seg) throw new HttpError(400, "path segments must not be empty.");
-    if (seg.includes("/") || seg.includes("\\") || seg.includes("..")) {
-      throw new HttpError(400, "Invalid folder name in path.");
-    }
-    out.push(seg);
-  }
-  return out;
 }
 
 function errorResponse(e: unknown): Response {

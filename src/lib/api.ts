@@ -1,6 +1,14 @@
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase'
 
-export type Category = 'pdf' | 'dwg' | 'images' | 'plan' | 'all'
+export type Category =
+  | 'pdf'
+  | 'dwg'
+  | 'images'
+  | 'plan'
+  | 'word'
+  | 'excel'
+  | 'psd'
+  | 'all'
 
 export interface ParsedQuery {
   buildingCode: string | null
@@ -88,9 +96,13 @@ async function parseJsonError(res: Response, fallback: string): Promise<never> {
 export async function searchFiles(
   query: string,
   category?: Category,
+  scopePath?: string[],
 ): Promise<SearchResponse> {
-  const body: { query: string; category?: Category } = { query }
+  const body: { query: string; category?: Category; scopePath?: string[] } = {
+    query,
+  }
   if (category !== undefined) body.category = category
+  if (scopePath !== undefined) body.scopePath = scopePath
 
   const res = await fetch(`${FUNCTIONS_BASE}/search`, {
     method: 'POST',

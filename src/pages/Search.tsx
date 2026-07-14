@@ -10,8 +10,6 @@ import {
   Search as SearchIcon,
   Loader2,
   AlertCircle,
-  FolderClosed,
-  ChevronRight,
   Clock,
   FileSearch,
 } from 'lucide-react'
@@ -24,21 +22,14 @@ import {
   type FileResult,
   type ParsedQuery,
 } from '../lib/api'
+import { CATEGORIES } from '../lib/categories'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useIsDesktop } from '../lib/useIsDesktop'
-import FileIcon from '../components/FileIcon'
 import FileRow from '../components/FileRow'
+import FolderResultRow from '../components/FolderResultRow'
 import PreviewModal from '../components/PreviewModal'
 import PreviewPane from '../components/PreviewPane'
-
-const CATEGORIES: { value: Category; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'pdf', label: 'PDF' },
-  { value: 'dwg', label: 'DWG' },
-  { value: 'images', label: 'Images' },
-  { value: 'plan', label: 'Plans' },
-]
 
 const CATEGORY_LABEL: Record<Category, string> = {
   all: 'All',
@@ -46,6 +37,9 @@ const CATEGORY_LABEL: Record<Category, string> = {
   dwg: 'DWG',
   images: 'Images',
   plan: 'Plans',
+  word: 'Word',
+  excel: 'Excel',
+  psd: 'PSD',
 }
 
 interface RecentSearch {
@@ -336,7 +330,7 @@ export default function Search() {
           <ul className="space-y-3 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             {results.map((file) =>
               file.isFolder ? (
-                <FolderRow
+                <FolderResultRow
                   key={file.id}
                   file={file}
                   opening={openingId === file.id}
@@ -410,51 +404,5 @@ function ParsedSummary({
         {count} result{count === 1 ? '' : 's'}
       </span>
     </p>
-  )
-}
-
-/**
- * Folder result from a search. Clicking it resolves the folder's location and
- * opens it in Browse.
- */
-function FolderRow({
-  file,
-  opening,
-  onOpen,
-}: {
-  file: FileResult
-  opening: boolean
-  onOpen: () => void
-}) {
-  return (
-    <li>
-      <button
-        onClick={onOpen}
-        disabled={opening}
-        aria-label={`Open folder ${file.name} in Browse`}
-        className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 disabled:opacity-60 sm:p-4"
-      >
-        <FileIcon previewType="other" isFolder size={20} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-gray-900">
-              {file.name}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-              <FolderClosed size={11} />
-              Folder
-            </span>
-          </div>
-        </div>
-        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-jade-700 dark:text-jade-300">
-          Open
-          {opening ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <ChevronRight size={14} />
-          )}
-        </span>
-      </button>
-    </li>
   )
 }

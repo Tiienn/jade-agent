@@ -136,3 +136,53 @@ Deno.test("RT pics -> images picsMode, empty keyword allowed", () => {
   assertEquals(r.picsMode, true);
   assertEquals(r.keywordTokens, []);
 });
+
+Deno.test("RT 2C word -> word, keyword 2c", () => {
+  const r = p("RT 2C word");
+  assertEquals(r.buildingCode, "RT");
+  assertEquals(r.category, "word");
+  assertEquals(r.keyword, "2c");
+  assertEquals(r.keywordTokens, ["2c"]);
+  assertEquals(r.picsMode, false);
+});
+
+Deno.test("doc / docx / docs synonyms map to word", () => {
+  assertEquals(p("RT 2C doc").category, "word");
+  assertEquals(p("RT 2C docx").category, "word");
+  assertEquals(p("RT 2C docs").category, "word");
+});
+
+Deno.test("JC 1a excel -> excel", () => {
+  const r = p("JC 1a excel");
+  assertEquals(r.buildingCode, "JC");
+  assertEquals(r.category, "excel");
+  assertEquals(r.keyword, "1a");
+});
+
+Deno.test("excel synonyms map to excel", () => {
+  assertEquals(p("JC 1a xls").category, "excel");
+  assertEquals(p("JC 1a xlsx").category, "excel");
+  assertEquals(p("JC 1a sheet").category, "excel");
+  assertEquals(p("JC 1a spreadsheet").category, "excel");
+});
+
+Deno.test("psd RT logo -> psd, keyword logo", () => {
+  const r = p("psd RT logo");
+  assertEquals(r.buildingCode, "RT");
+  assertEquals(r.category, "psd");
+  assertEquals(r.keyword, "logo");
+  assertEquals(r.keywordTokens, ["logo"]);
+});
+
+Deno.test("photoshop synonym maps to psd", () => {
+  assertEquals(p("RT logo photoshop").category, "psd");
+});
+
+Deno.test("categoryOverride to a new category (excel)", () => {
+  // Typed 'pics' (images + picsMode) but override to excel -> excel, no picsMode.
+  const r = p("Pics RT 1D", "excel");
+  assertEquals(r.category, "excel");
+  assertEquals(r.picsMode, false);
+  assertEquals(r.buildingCode, "RT");
+  assertEquals(r.keyword, "1d");
+});
