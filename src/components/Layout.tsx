@@ -185,7 +185,7 @@ function SidebarInner({
         <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5">
           <Logo size={28} />
           <span className="text-base font-semibold tracking-tight text-gray-900">
-            Jade File Finder
+            Jade Agent
           </span>
         </Link>
         {onClose && (
@@ -341,7 +341,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/" className="flex items-center gap-2">
             <Logo size={24} />
             <span className="text-sm font-semibold tracking-tight text-gray-900">
-              Jade File Finder
+              Jade Agent
             </span>
           </Link>
         </header>

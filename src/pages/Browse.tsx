@@ -9,6 +9,7 @@ import {
   FileSearch,
   X,
   Pin,
+  Home,
 } from 'lucide-react'
 import { usePins } from '../context/PinsContext'
 import {
@@ -275,20 +276,29 @@ export default function Browse() {
           </nav>
 
           {path.length > 0 && (
-            <button
-              onClick={() =>
-                folderPinned ? unpin(pathKey) : pin(currentFolderName, path)
-              }
-              aria-label={folderPinned ? 'Unpin this folder' : 'Pin this folder'}
-              aria-pressed={folderPinned}
-              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 ${
-                folderPinned
-                  ? 'border-jade-600 bg-jade-50 text-jade-600 dark:text-jade-300'
-                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-              }`}
-            >
-              <Pin size={18} fill={folderPinned ? 'currentColor' : 'none'} />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => navigateTo([])}
+                aria-label="Back to Project"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
+              >
+                <Home size={18} />
+              </button>
+              <button
+                onClick={() =>
+                  folderPinned ? unpin(pathKey) : pin(currentFolderName, path)
+                }
+                aria-label={folderPinned ? 'Unpin this folder' : 'Pin this folder'}
+                aria-pressed={folderPinned}
+                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 ${
+                  folderPinned
+                    ? 'border-jade-600 bg-jade-50 text-jade-600 dark:text-jade-300'
+                    : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                }`}
+              >
+                <Pin size={18} fill={folderPinned ? 'currentColor' : 'none'} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -439,6 +449,12 @@ export default function Browse() {
                   key={entry.id}
                   file={entry}
                   onOpen={() => openFolder(entry.name)}
+                  pinned={isPinned([...path, entry.name])}
+                  onTogglePin={() => {
+                    const segments = [...path, entry.name]
+                    if (isPinned(segments)) unpin(segments.join('/'))
+                    else pin(entry.name, segments)
+                  }}
                 />
               ) : (
                 <FileRow
@@ -518,26 +534,48 @@ export default function Browse() {
   )
 }
 
-/** Clickable folder row that navigates into the folder. */
+/** Clickable folder row that navigates into the folder, with a pin toggle. */
 function BrowseFolderRow({
   file,
   onOpen,
+  pinned,
+  onTogglePin,
 }: {
   file: FileResult
   onOpen: () => void
+  pinned: boolean
+  onTogglePin: () => void
 }) {
   return (
     <li>
-      <button
-        onClick={onOpen}
-        className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 sm:p-4"
-      >
-        <FileIcon previewType="other" isFolder size={20} />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
-          {file.name}
-        </span>
+      <div className="flex items-center gap-1 rounded-xl border border-gray-200 bg-white pr-2 transition-colors hover:border-gray-300 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-jade-600/40">
+        <button
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-l-xl p-3 text-left focus:outline-none sm:p-4"
+        >
+          <FileIcon previewType="other" isFolder size={20} />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900">
+            {file.name}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePin()
+          }}
+          aria-label={pinned ? `Unpin ${file.name}` : `Pin ${file.name}`}
+          aria-pressed={pinned}
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 ${
+            pinned
+              ? 'text-jade-600 hover:bg-jade-50 dark:text-jade-300'
+              : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+          }`}
+        >
+          <Pin size={18} fill={pinned ? 'currentColor' : 'none'} />
+        </button>
         <ChevronRight size={18} className="shrink-0 text-gray-400" />
-      </button>
+      </div>
     </li>
   )
 }

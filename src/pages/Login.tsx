@@ -64,7 +64,7 @@ export default function Login() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Logo size={44} />
           <h1 className="mt-3 text-xl font-semibold tracking-tight text-gray-900">
-            Jade File Finder
+            Jade Agent
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             Sign in to search company files

@@ -1,4 +1,4 @@
-/** Simple jade diamond/square logomark — inline SVG, no external assets. */
+/** Jade cloud logomark with a black-bordered square — inline SVG, no external assets. */
 export default function Logo({
   size = 28,
   className = '',
@@ -10,30 +10,25 @@ export default function Logo({
     <svg
       width={size}
       height={size}
-      viewBox="0 0 32 32"
+      viewBox="0 0 100 100"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
     >
-      <rect
-        x="16"
-        y="1.5"
-        width="20.5"
-        height="20.5"
-        rx="4"
-        transform="rotate(45 16 1.5)"
-        fill="var(--color-jade-600)"
-      />
-      <rect
-        x="16"
-        y="8.2"
-        width="11"
-        height="11"
-        rx="2.5"
-        transform="rotate(45 16 8.2)"
-        fill="var(--color-jade-300)"
-      />
+      {/* Jade cloud: six lobes on a ring + a center fill, unioned into one shape */}
+      <g fill="#0F766E">
+        <circle cx="70" cy="50" r="22" />
+        <circle cx="60" cy="67.3" r="22" />
+        <circle cx="40" cy="67.3" r="22" />
+        <circle cx="30" cy="50" r="22" />
+        <circle cx="40" cy="32.7" r="22" />
+        <circle cx="60" cy="32.7" r="22" />
+        <circle cx="50" cy="50" r="30" />
+      </g>
+      {/* Black-bordered square with a pure-white center (stays white in dark mode) */}
+      <rect x="36" y="36" width="28" height="28" rx="2" fill="#000000" />
+      <rect x="43" y="43" width="14" height="14" fill="#ffffff" />
     </svg>
   )
 }
