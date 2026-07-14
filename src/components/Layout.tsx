@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Search as SearchIcon,
+  FolderOpen,
   LayoutDashboard,
   Users as UsersIcon,
   Settings as SettingsIcon,
@@ -19,12 +20,10 @@ interface NavItem {
   end: boolean
 }
 
-const SEARCH_LINK: NavItem = {
-  to: '/',
-  label: 'Search',
-  icon: SearchIcon,
-  end: true,
-}
+const MAIN_LINKS: NavItem[] = [
+  { to: '/', label: 'Search', icon: SearchIcon, end: true },
+  { to: '/browse', label: 'Browse', icon: FolderOpen, end: true },
+]
 
 const ADMIN_LINKS: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -107,7 +106,9 @@ function SidebarInner({
 
       {/* Navigation */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-2">
-        <NavLinkItem item={SEARCH_LINK} onNavigate={onNavigate} />
+        {MAIN_LINKS.map((item) => (
+          <NavLinkItem key={item.to} item={item} onNavigate={onNavigate} />
+        ))}
         {isAdmin && (
           <>
             <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">

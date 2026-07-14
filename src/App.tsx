@@ -4,6 +4,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Search from './pages/Search'
+import Browse from './pages/Browse'
 import Dashboard from './pages/admin/Dashboard'
 import Users from './pages/admin/Users'
 import Settings from './pages/admin/Settings'
@@ -20,6 +21,17 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Search />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/browse"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Browse />
             </Layout>
           </ProtectedRoute>
         }
