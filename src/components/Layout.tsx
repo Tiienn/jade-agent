@@ -9,8 +9,11 @@ import {
   LogOut,
   Menu,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../lib/useTheme'
 import Logo from './Logo'
 
 interface NavItem {
@@ -34,7 +37,7 @@ const ADMIN_LINKS: NavItem[] = [
 function navLinkClass({ isActive }: { isActive: boolean }) {
   return `relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
     isActive
-      ? 'bg-jade-50 text-jade-700'
+      ? 'bg-jade-50 text-jade-700 dark:text-jade-300'
       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
   }`
 }
@@ -74,6 +77,7 @@ function SidebarInner({
   onClose?: () => void
 }) {
   const { profile, logout } = useAuth()
+  const { theme, toggle } = useTheme()
   const navigate = useNavigate()
   const isAdmin = profile?.role === 'admin'
 
@@ -131,6 +135,14 @@ function SidebarInner({
             <p className="text-xs capitalize text-gray-400">{profile.role}</p>
           </div>
         )}
+        <button
+          onClick={toggle}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+        </button>
         <button
           onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"

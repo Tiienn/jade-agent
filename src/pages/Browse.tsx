@@ -166,7 +166,7 @@ export default function Browse() {
               className={`rounded px-1.5 py-0.5 font-medium ${
                 subPath.length === 0
                   ? 'text-gray-900'
-                  : 'text-jade-700 hover:bg-jade-50'
+                  : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
               }`}
             >
               {building.name}
@@ -181,7 +181,7 @@ export default function Browse() {
                     className={`rounded px-1.5 py-0.5 ${
                       last
                         ? 'font-medium text-gray-900'
-                        : 'text-jade-700 hover:bg-jade-50'
+                        : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
                     }`}
                   >
                     {seg}

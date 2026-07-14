@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode: `dark:` variants apply under .dark. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-jade-50: #f0fdfa;
   --color-jade-100: #ccfbf1;
@@ -15,6 +18,44 @@
 
 :root {
   color-scheme: light;
+}
+
+/*
+ * Dark mode. The app uses Tailwind's neutral scale consistently
+ * (white = surfaces, gray-50 = app background, gray-900 = text, etc.).
+ * Because Tailwind v4 utilities resolve colors through CSS variables at
+ * runtime, redefining those variables under .dark re-themes the whole app
+ * with no per-component changes. The neutral ramp is inverted so existing
+ * semantics hold (gray-900 stays "primary text", now light-on-dark).
+ */
+.dark {
+  color-scheme: dark;
+
+  --color-white: #1c1f23;
+
+  --color-gray-50: #14171a;
+  --color-gray-100: #242a30;
+  --color-gray-200: #2f363d;
+  --color-gray-300: #3c444c;
+  --color-gray-400: #8b939c;
+  --color-gray-500: #a3abb3;
+  --color-gray-600: #bcc3ca;
+  --color-gray-700: #d4dade;
+  --color-gray-800: #e6e9ec;
+  --color-gray-900: #f3f5f6;
+
+  /* Selected/tinted jade surface stays legible on dark. */
+  --color-jade-50: #0e302d;
+
+  /* Error banner. */
+  --color-red-50: #3a1c1c;
+  --color-red-200: #5c2b2b;
+  --color-red-700: #fca5a5;
+}
+
+body {
+  background-color: var(--color-gray-50);
+  color: var(--color-gray-900);
 }
 
 html,
