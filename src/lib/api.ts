@@ -28,6 +28,12 @@ export interface SearchResponse {
   results: FileResult[]
 }
 
+export interface BrowseResponse {
+  building: { code: string; name: string }
+  subPath: string[]
+  entries: FileResult[]
+}
+
 export type SearchErrorCode = 'NO_BUILDING' | 'NO_KEYWORD'
 
 /** A human-readable error surfaced from the backend, plus an optional code. */
@@ -95,6 +101,22 @@ export async function searchFiles(
     await parseJsonError(res, 'Search failed. Please try again.')
   }
   return (await res.json()) as SearchResponse
+}
+
+export async function browseFolder(
+  buildingCode: string,
+  subPath: string[],
+): Promise<BrowseResponse> {
+  const res = await fetch(`${FUNCTIONS_BASE}/browse`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ buildingCode, subPath }),
+  })
+
+  if (!res.ok) {
+    await parseJsonError(res, 'Could not open this folder. Please try again.')
+  }
+  return (await res.json()) as BrowseResponse
 }
 
 export async function fetchFileBlob(

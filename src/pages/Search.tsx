@@ -4,12 +4,9 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from 'react'
 import {
   Search as SearchIcon,
-  Download,
-  Eye,
   Loader2,
   AlertCircle,
   FolderClosed,
@@ -26,11 +23,11 @@ import {
 } from '../lib/api'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { humanFileSize, formatDate } from '../lib/format'
 import { useIsDesktop } from '../lib/useIsDesktop'
 import FileIcon from '../components/FileIcon'
+import FileRow from '../components/FileRow'
 import PreviewModal from '../components/PreviewModal'
-import PreviewContent from '../components/PreviewContent'
+import PreviewPane from '../components/PreviewPane'
 
 const CATEGORIES: { value: Category; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -65,6 +62,7 @@ export default function Search() {
   const [error, setError] = useState<string | null>(null)
   const [recent, setRecent] = useState<RecentSearch[]>([])
   const [selected, setSelected] = useState<FileResult | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const isDesktop = useIsDesktop()
 
@@ -94,6 +92,7 @@ export default function Search() {
       setLoading(true)
       setError(null)
       setSelected(null)
+      setExpanded(false)
       try {
         // 'all' is the default — let the backend parser extract a category
         // from the text. A specific pill overrides it.
@@ -317,70 +316,42 @@ export default function Search() {
       {!loading && results && results.length > 0 && (
         <div className="mt-3 min-h-0 flex-1 lg:grid lg:grid-cols-5 lg:gap-6">
           <ul className="space-y-3 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-            {results.map((file) => (
-              <ResultRow
-                key={file.id}
-                file={file}
-                selected={selected?.id === file.id}
-                downloading={downloadingId === file.id}
-                onSelect={() => handleSelect(file)}
-                onDownload={() => handleDownload(file)}
-              />
-            ))}
+            {results.map((file) =>
+              file.isFolder ? (
+                <FolderRow key={file.id} file={file} />
+              ) : (
+                <FileRow
+                  key={file.id}
+                  file={file}
+                  selected={selected?.id === file.id}
+                  downloading={downloadingId === file.id}
+                  onSelect={() => handleSelect(file)}
+                  onDownload={() => handleDownload(file)}
+                />
+              ),
+            )}
           </ul>
 
           {/* Desktop preview pane */}
           {isDesktop && (
-            <div className="lg:col-span-3 lg:h-full lg:min-h-0">
-              <div className="flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white">
-                {selected ? (
-                  <>
-                    <div className="flex items-center gap-3 border-b border-gray-200 px-4 py-3">
-                      <FileIcon previewType={selected.previewType} size={18} />
-                      <span
-                        className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900"
-                        title={selected.name}
-                      >
-                        {selected.name}
-                      </span>
-                      <button
-                        onClick={() => handleDownload(selected)}
-                        disabled={downloadingId === selected.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-jade-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-jade-700 disabled:opacity-60"
-                      >
-                        {downloadingId === selected.id ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <Download size={16} />
-                        )}
-                        Download
-                      </button>
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <PreviewContent
-                        file={selected}
-                        onDownload={handleDownload}
-                        downloading={downloadingId === selected.id}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-gray-400">
-                    <Eye size={28} />
-                    <p className="text-sm">Select a file to preview it here</p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <PreviewPane
+              selected={selected}
+              downloadingId={downloadingId}
+              onDownload={handleDownload}
+              onExpand={() => setExpanded(true)}
+            />
           )}
         </div>
       )}
 
-      {/* Mobile / tablet preview modal */}
-      {!isDesktop && selected && (
+      {/* Full-screen preview: always on mobile; on desktop only when expanded */}
+      {selected && (!isDesktop || expanded) && (
         <PreviewModal
           file={selected}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setExpanded(false)
+            if (!isDesktop) setSelected(null)
+          }}
           onDownload={handleDownload}
           downloading={downloadingId === selected.id}
         />
@@ -419,94 +390,25 @@ function ParsedSummary({
   )
 }
 
-function ResultRow({
-  file,
-  selected,
-  downloading,
-  onSelect,
-  onDownload,
-}: {
-  file: FileResult
-  selected: boolean
-  downloading: boolean
-  onSelect: () => void
-  onDownload: () => void
-}) {
-  if (file.isFolder) {
-    return (
-      <li className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
-        <FileIcon previewType="other" isFolder size={20} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-gray-900">
-              {file.name}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-              <FolderClosed size={11} />
-              Folder
-            </span>
-          </div>
-          {file.path && (
-            <p className="mt-0.5 truncate text-xs text-gray-400">{file.path}</p>
-          )}
-        </div>
-      </li>
-    )
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLLIElement>) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onSelect()
-    }
-  }
-
+/** Non-interactive folder row shown when a search turns up a folder. */
+function FolderRow({ file }: { file: FileResult }) {
   return (
-    <li
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={onSelect}
-      onKeyDown={handleKeyDown}
-      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 sm:p-4 ${
-        selected
-          ? 'border-jade-600 bg-jade-50 ring-1 ring-jade-600'
-          : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
-    >
-      <FileIcon previewType={file.previewType} size={20} />
+    <li className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
+      <FileIcon previewType="other" isFolder size={20} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900" title={file.name}>
-          {file.name}
-        </p>
-        {file.path && (
-          <p className="mt-0.5 truncate text-xs text-gray-400" title={file.path}>
-            {file.path}
-          </p>
-        )}
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
-          <span>{formatDate(file.lastModified)}</span>
-          <span className="text-gray-300">·</span>
-          <span>{humanFileSize(file.size)}</span>
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-gray-900">
+            {file.name}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+            <FolderClosed size={11} />
+            Folder
+          </span>
         </div>
-      </div>
-
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onDownload()
-        }}
-        disabled={downloading}
-        aria-label={`Download ${file.name}`}
-        className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-lg bg-jade-600 px-3 text-sm font-medium text-white transition-colors hover:bg-jade-700 disabled:opacity-60"
-      >
-        {downloading ? (
-          <Loader2 size={16} className="animate-spin" />
-        ) : (
-          <Download size={16} />
+        {file.path && (
+          <p className="mt-0.5 truncate text-xs text-gray-400">{file.path}</p>
         )}
-        <span className="hidden sm:inline">Download</span>
-      </button>
+      </div>
     </li>
   )
 }

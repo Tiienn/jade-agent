@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.admin-users]
 verify_jwt = false
+
+[functions.browse]
+verify_jwt = false

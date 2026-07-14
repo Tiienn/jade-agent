@@ -33,7 +33,7 @@ export default function PreviewModal({
       onClick={onClose}
     >
       <div
-        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-xl sm:h-[85vh] sm:max-w-4xl sm:rounded-2xl"
+        className="flex h-full w-full flex-col overflow-hidden bg-white shadow-xl sm:h-[90vh] sm:max-w-6xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
