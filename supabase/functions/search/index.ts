@@ -114,7 +114,7 @@ Deno.serve(async (req: Request) => {
       return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
     });
 
-    const capped = results.slice(0, 100);
+    const capped = results.slice(0, 250);
 
     // Audit log (service role — client inserts are blocked by RLS).
     await svc.from("search_logs").insert({
@@ -184,7 +184,7 @@ async function scopedSearch(args: ScopedSearchArgs): Promise<Response> {
     return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
   });
 
-  const capped = results.slice(0, 100);
+  const capped = results.slice(0, 250);
 
   // Audit log (service role — client inserts are blocked by RLS). Record the
   // browsed scope alongside the parsed query.

@@ -179,12 +179,15 @@ export async function searchInFolder(
 ): Promise<FileResult[]> {
   const token = await getGraphToken();
   const escaped = q.replace(/'/g, "''"); // OData: double single-quotes
+  // Wide window: broad terms (e.g. "lease") can have >1000 candidates, and
+  // since we filter by name AFTER fetching, a narrow window silently drops
+  // real matches. Rare terms stop early anyway (no nextLink).
   let url =
-    `${GRAPH}/drives/${driveId}/items/${folderId}/search(q='${encodeURIComponent(escaped)}')?$top=50&$select=${SELECT}`;
+    `${GRAPH}/drives/${driveId}/items/${folderId}/search(q='${encodeURIComponent(escaped)}')?$top=200&$select=${SELECT}`;
 
   const items: any[] = [];
   let pages = 0;
-  while (url && pages < 4) {
+  while (url && pages < 10) {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
