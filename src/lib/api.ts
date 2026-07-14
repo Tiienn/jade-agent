@@ -36,6 +36,9 @@ export interface SearchResponse {
   parsed: ParsedQuery
   count: number
   results: FileResult[]
+  /** Set when a building-scoped search found nothing and results fell back to
+   * the whole library. Holds the building name that was originally scoped. */
+  fallbackFrom?: string
 }
 
 export interface BrowseResponse {

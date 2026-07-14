@@ -189,43 +189,54 @@ interface BuildingMatch {
 }
 
 /**
- * Try to match a building starting at index `i`. Returns the best (longest)
- * match across all buildings, with earlier buildings winning ties.
+ * Try to match a building starting at index `i`. Prefers the longest match and,
+ * for NAME-based matches, requires it to identify exactly one building — an
+ * ambiguous single word like "jade" (Jade Court AND Jade House) is left in the
+ * keyword tokens rather than silently scoping to one of them. Code matches are
+ * exact and unique by definition, so they are never ambiguous.
  */
 function matchBuildingAt(
   tokens: string[],
   i: number,
   buildings: BuildingRef[],
 ): BuildingMatch | null {
-  let best: BuildingMatch | null = null;
-
-  for (const b of buildings) {
-    let len = 0;
-
-    // Exact code match (single token) — includes single-letter M / W.
-    if (tokens[i] === b.code.toLowerCase()) {
-      len = Math.max(len, 1);
-    }
-
-    // Name-word match: one or two consecutive tokens.
-    const nameWords = b.name.toLowerCase().split(/\s+/).filter(Boolean);
-    // Two consecutive name words.
-    if (i + 1 < tokens.length) {
+  // 1. Two-word name match (longest). Counts only if it identifies exactly one
+  //    building; "jade court" -> Jade Court beats the single token "jade".
+  if (i + 1 < tokens.length) {
+    const hits: BuildingRef[] = [];
+    for (const b of buildings) {
+      const nameWords = b.name.toLowerCase().split(/\s+/).filter(Boolean);
       for (let w = 0; w + 1 < nameWords.length; w++) {
         if (nameWords[w] === tokens[i] && nameWords[w + 1] === tokens[i + 1]) {
-          len = Math.max(len, 2);
+          hits.push(b);
+          break;
         }
       }
     }
-    // Single name word.
-    if (len < 2 && nameWords.includes(tokens[i])) {
-      len = Math.max(len, 1);
-    }
-
-    if (len > (best?.length ?? 0)) {
-      best = { code: b.code, name: b.name, length: len };
+    if (hits.length === 1) {
+      return { code: hits[0].code, name: hits[0].name, length: 2 };
     }
   }
 
-  return best;
+  // 2. Exact code match (single token) — includes single-letter M / W; unique.
+  for (const b of buildings) {
+    if (tokens[i] === b.code.toLowerCase()) {
+      return { code: b.code, name: b.name, length: 1 };
+    }
+  }
+
+  // 3. Single name word. Counts only if exactly one building has that word in
+  //    its name; two-or-more (e.g. "jade") is ambiguous and does not match.
+  const nameHits: BuildingRef[] = [];
+  for (const b of buildings) {
+    const nameWords = b.name.toLowerCase().split(/\s+/).filter(Boolean);
+    if (nameWords.includes(tokens[i])) {
+      nameHits.push(b);
+    }
+  }
+  if (nameHits.length === 1) {
+    return { code: nameHits[0].code, name: nameHits[0].name, length: 1 };
+  }
+
+  return null;
 }

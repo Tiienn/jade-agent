@@ -116,6 +116,42 @@ Deno.serve(async (req: Request) => {
 
     const capped = results.slice(0, 250);
 
+    // Zero-result fallback: if a building narrowed the search and nothing turned
+    // up, retry across the whole project so a mis-scoped building name doesn't
+    // hide matches that live elsewhere (e.g. "jade logo" scoped to a building
+    // when the logo lives at the project root).
+    if (building && capped.length === 0) {
+      const projectFolder = await getFolderByPath(driveId, getProjectRoot());
+      if (projectFolder) {
+        const fbResults = await normalSearch(
+          driveId,
+          projectFolder.id as string,
+          parsed.keywordTokens,
+          parsed.category,
+        );
+        fbResults.sort((a, b) => {
+          if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+          return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
+        });
+        const fbCapped = fbResults.slice(0, 250);
+        if (fbCapped.length > 0) {
+          await svc.from("search_logs").insert({
+            user_id: user.id,
+            username: profile.username,
+            query: rawQuery,
+            parsed: { ...parsed, fallbackFrom: building.name },
+            result_count: fbCapped.length,
+          });
+          return jsonResponse({
+            parsed,
+            count: fbCapped.length,
+            results: fbCapped,
+            fallbackFrom: building.name,
+          });
+        }
+      }
+    }
+
     // Audit log (service role — client inserts are blocked by RLS).
     await svc.from("search_logs").insert({
       user_id: user.id,

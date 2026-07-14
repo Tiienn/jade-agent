@@ -10,6 +10,7 @@ import {
   Search as SearchIcon,
   Loader2,
   AlertCircle,
+  Info,
   Clock,
   FileSearch,
 } from 'lucide-react'
@@ -58,6 +59,7 @@ export default function Search() {
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fallbackFrom, setFallbackFrom] = useState<string | null>(null)
   const [recent, setRecent] = useState<RecentSearch[]>([])
   const [selected, setSelected] = useState<FileResult | null>(null)
   const [expanded, setExpanded] = useState(false)
@@ -90,6 +92,7 @@ export default function Search() {
       lastQueryRef.current = q
       setLoading(true)
       setError(null)
+      setFallbackFrom(null)
       setSelected(null)
       setExpanded(false)
       try {
@@ -100,11 +103,13 @@ export default function Search() {
         setResults(res.results)
         setParsed(res.parsed)
         setCount(res.count)
+        setFallbackFrom(res.fallbackFrom ?? null)
         loadRecent()
       } catch (err) {
         setResults(null)
         setParsed(null)
         setCount(0)
+        setFallbackFrom(null)
         if (err instanceof ApiError) setError(err.message)
         else setError(err instanceof Error ? err.message : 'Search failed.')
       } finally {
@@ -262,6 +267,18 @@ export default function Search() {
           <div className="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertCircle size={18} className="mt-0.5 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Fallback notice — building-scoped search found nothing, so results
+            come from the whole library instead. */}
+        {!loading && fallbackFrom && !error && (
+          <div className="mt-6 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <Info size={18} className="mt-0.5 shrink-0" />
+            <span>
+              Nothing found in {fallbackFrom} — showing matches from the whole
+              library.
+            </span>
           </div>
         )}
 

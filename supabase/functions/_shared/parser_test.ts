@@ -178,6 +178,42 @@ Deno.test("photoshop synonym maps to psd", () => {
   assertEquals(p("RT logo photoshop").category, "psd");
 });
 
+Deno.test("ambiguous 'jade' (Jade Court + Jade House) is NOT a building", () => {
+  const r = p("jade logo");
+  assertEquals(r.buildingCode, null);
+  assertEquals(r.buildingName, null);
+  assertEquals(r.keywordTokens, ["jade", "logo"]);
+  assertEquals(r.keyword, "jade logo");
+  assertEquals(r.category, "all");
+});
+
+Deno.test("ambiguous 'jade' stays a keyword across more tokens", () => {
+  const r = p("jade group logo");
+  assertEquals(r.buildingCode, null);
+  assertEquals(r.keywordTokens, ["jade", "group", "logo"]);
+});
+
+Deno.test("'jade court' bigram unambiguously matches JC", () => {
+  const r = p("jade court logo");
+  assertEquals(r.buildingCode, "JC");
+  assertEquals(r.buildingName, "Jade Court");
+  assertEquals(r.keyword, "logo");
+});
+
+Deno.test("'jade house' bigram unambiguously matches JH", () => {
+  const r = p("jade house 2a");
+  assertEquals(r.buildingCode, "JH");
+  assertEquals(r.buildingName, "Jade House");
+  assertEquals(r.keyword, "2a");
+});
+
+Deno.test("unique single name word 'raffles' still matches RT", () => {
+  const r = p("raffles 1d");
+  assertEquals(r.buildingCode, "RT");
+  assertEquals(r.buildingName, "Raffles Tower");
+  assertEquals(r.keyword, "1d");
+});
+
 Deno.test("categoryOverride to a new category (excel)", () => {
   // Typed 'pics' (images + picsMode) but override to excel -> excel, no picsMode.
   const r = p("Pics RT 1D", "excel");
