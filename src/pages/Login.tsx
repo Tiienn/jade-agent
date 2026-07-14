@@ -62,7 +62,7 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Logo size={44} />
+          <Logo size={64} />
           <h1 className="mt-3 text-xl font-semibold tracking-tight text-gray-900">
             Jade Agent
           </h1>

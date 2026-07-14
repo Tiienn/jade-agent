@@ -183,7 +183,7 @@ function SidebarInner({
       {/* Brand */}
       <div className="flex h-16 shrink-0 items-center justify-between px-4">
         <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5">
-          <Logo size={28} />
+          <Logo size={40} />
           <span className="text-base font-semibold tracking-tight text-gray-900">
             Jade Agent
           </span>
@@ -339,7 +339,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Menu size={22} />
           </button>
           <Link to="/" className="flex items-center gap-2">
-            <Logo size={24} />
+            <Logo size={32} />
             <span className="text-sm font-semibold tracking-tight text-gray-900">
               Jade Agent
             </span>
