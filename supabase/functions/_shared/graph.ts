@@ -98,6 +98,44 @@ async function graphGet(path: string): Promise<any> {
 }
 
 // ---------------------------------------------------------------------------
+// Project root (the shared base folder Browse opens at and unscoped search uses)
+// ---------------------------------------------------------------------------
+
+/** Drive-relative base folder for browsing/searching. Configurable via env. */
+export function getProjectRoot(): string {
+  return (Deno.env.get("PROJECT_ROOT") || "Marketing/Project").replace(
+    /^\/+|\/+$/g,
+    "",
+  );
+}
+
+function segments(path: string): string[] {
+  return path.split("/").filter(Boolean);
+}
+
+/**
+ * Resolve a folder item to its location as path segments relative to the
+ * project root, or null if it falls outside that root. The drive search
+ * endpoint omits parentReference.path, so we fetch the item directly (which
+ * does include it) — used to deep-link a search result into Browse.
+ */
+export async function getItemBrowsePath(
+  driveId: string,
+  itemId: string,
+): Promise<string[] | null> {
+  const json = await graphGet(
+    `/drives/${driveId}/items/${itemId}?$select=name,parentReference`,
+  );
+  const parent = humanPath(json.parentReference?.path);
+  const full = segments(`${parent}/${json.name ?? ""}`);
+  const root = segments(getProjectRoot());
+  for (let i = 0; i < root.length; i++) {
+    if ((full[i] ?? "").toLowerCase() !== root[i].toLowerCase()) return null;
+  }
+  return full.slice(root.length);
+}
+
+// ---------------------------------------------------------------------------
 // Drive / folder resolution
 // ---------------------------------------------------------------------------
 

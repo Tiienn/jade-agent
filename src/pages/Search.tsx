@@ -5,17 +5,20 @@ import {
   useState,
   type FormEvent,
 } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Search as SearchIcon,
   Loader2,
   AlertCircle,
   FolderClosed,
+  ChevronRight,
   Clock,
   FileSearch,
 } from 'lucide-react'
 import {
   searchFiles,
   fetchFileBlob,
+  resolveFolderPath,
   ApiError,
   type Category,
   type FileResult,
@@ -53,6 +56,7 @@ interface RecentSearch {
 
 export default function Search() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<Category>('all')
   const [results, setResults] = useState<FileResult[] | null>(null)
@@ -64,6 +68,7 @@ export default function Search() {
   const [selected, setSelected] = useState<FileResult | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [openingId, setOpeningId] = useState<string | null>(null)
   const isDesktop = useIsDesktop()
 
   // Track the latest search query so we can re-run it when the category changes.
@@ -155,6 +160,19 @@ export default function Search() {
   function handleSelect(file: FileResult) {
     if (file.isFolder) return
     setSelected(file)
+  }
+
+  async function openInBrowse(file: FileResult) {
+    setOpeningId(file.id)
+    try {
+      const path = await resolveFolderPath(file.driveId, file.id)
+      const q = path.map(encodeURIComponent).join('/')
+      navigate(q ? `/browse?path=${q}` : '/browse')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open this folder.')
+    } finally {
+      setOpeningId(null)
+    }
   }
 
   const showEmptyState = !loading && results === null && !error
@@ -318,7 +336,12 @@ export default function Search() {
           <ul className="space-y-3 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             {results.map((file) =>
               file.isFolder ? (
-                <FolderRow key={file.id} file={file} />
+                <FolderRow
+                  key={file.id}
+                  file={file}
+                  opening={openingId === file.id}
+                  onOpen={() => openInBrowse(file)}
+                />
               ) : (
                 <FileRow
                   key={file.id}
@@ -390,25 +413,48 @@ function ParsedSummary({
   )
 }
 
-/** Non-interactive folder row shown when a search turns up a folder. */
-function FolderRow({ file }: { file: FileResult }) {
+/**
+ * Folder result from a search. Clicking it resolves the folder's location and
+ * opens it in Browse.
+ */
+function FolderRow({
+  file,
+  opening,
+  onOpen,
+}: {
+  file: FileResult
+  opening: boolean
+  onOpen: () => void
+}) {
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 sm:p-4">
-      <FileIcon previewType="other" isFolder size={20} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium text-gray-900">
-            {file.name}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-            <FolderClosed size={11} />
-            Folder
-          </span>
+    <li>
+      <button
+        onClick={onOpen}
+        disabled={opening}
+        aria-label={`Open folder ${file.name} in Browse`}
+        className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 disabled:opacity-60 sm:p-4"
+      >
+        <FileIcon previewType="other" isFolder size={20} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-medium text-gray-900">
+              {file.name}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+              <FolderClosed size={11} />
+              Folder
+            </span>
+          </div>
         </div>
-        {file.path && (
-          <p className="mt-0.5 truncate text-xs text-gray-400">{file.path}</p>
-        )}
-      </div>
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-jade-700 dark:text-jade-300">
+          Open
+          {opening ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <ChevronRight size={14} />
+          )}
+        </span>
+      </button>
     </li>
   )
 }

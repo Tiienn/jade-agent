@@ -20,6 +20,8 @@ export interface FileResult {
   lastModified: string
   isFolder: boolean
   previewType: 'pdf' | 'image' | 'dwg' | 'other'
+  /** For folder results: segments (relative to the project root) to open it in Browse. */
+  browsePath?: string[]
 }
 
 export interface SearchResponse {
@@ -29,8 +31,7 @@ export interface SearchResponse {
 }
 
 export interface BrowseResponse {
-  building: { code: string; name: string }
-  subPath: string[]
+  path: string[]
   entries: FileResult[]
 }
 
@@ -103,20 +104,35 @@ export async function searchFiles(
   return (await res.json()) as SearchResponse
 }
 
-export async function browseFolder(
-  buildingCode: string,
-  subPath: string[],
-): Promise<BrowseResponse> {
+export async function browseFolder(path: string[]): Promise<BrowseResponse> {
   const res = await fetch(`${FUNCTIONS_BASE}/browse`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify({ buildingCode, subPath }),
+    body: JSON.stringify({ path }),
   })
 
   if (!res.ok) {
     await parseJsonError(res, 'Could not open this folder. Please try again.')
   }
   return (await res.json()) as BrowseResponse
+}
+
+/** Resolve a folder (by id) to its Browse path segments — used to deep-link
+ * a search result into Browse. */
+export async function resolveFolderPath(
+  driveId: string,
+  itemId: string,
+): Promise<string[]> {
+  const res = await fetch(`${FUNCTIONS_BASE}/browse`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ driveId, itemId, resolveOnly: true }),
+  })
+
+  if (!res.ok) {
+    await parseJsonError(res, 'Could not open this folder.')
+  }
+  return ((await res.json()) as BrowseResponse).path
 }
 
 export async function fetchFileBlob(

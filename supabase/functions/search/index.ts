@@ -8,6 +8,7 @@ import { type Category, parseQuery } from "../_shared/parser.ts";
 import {
   getDriveId,
   getFolderByPath,
+  getProjectRoot,
   listChildren,
   searchInFolder,
 } from "../_shared/graph.ts";
@@ -45,32 +46,35 @@ Deno.serve(async (req: Request) => {
       override,
     );
 
-    if (!parsed.buildingCode) {
-      return jsonResponse(
-        {
-          error:
-            "Couldn't find a building in your search. Use a code like RT, AH, AC, FSB, JC, JH, M, W, PS — or the building name.",
-          code: "NO_BUILDING",
-        },
-        400,
-      );
-    }
-    if (parsed.keywordTokens.length === 0 && parsed.category === "all") {
+    // A keyword is always required: scoped searches allow "RT pdf" (category
+    // only), but an unscoped whole-project search needs a term to be useful.
+    const needsKeyword = !parsed.buildingCode ||
+      parsed.category === "all";
+    if (parsed.keywordTokens.length === 0 && needsKeyword) {
       return jsonResponse(
         { error: "Add a unit or keyword, e.g. RT 1D", code: "NO_KEYWORD" },
         400,
       );
     }
 
-    const building = buildings.find((b) => b.code === parsed.buildingCode)!;
-
     const driveId = await getDriveId();
-    const rootFolder = await getFolderByPath(driveId, building.root_path);
+
+    // Scope: a matched building narrows to its folder; otherwise search the
+    // whole project tree (Marketing/Project by default).
+    const building = parsed.buildingCode
+      ? buildings.find((b) => b.code === parsed.buildingCode)!
+      : null;
+    const rootPath = building ? building.root_path : getProjectRoot();
+
+    const rootFolder = await getFolderByPath(driveId, rootPath);
     if (!rootFolder) {
+      const where = building
+        ? `${building.name} (looked for '${building.root_path}')`
+        : `the project folder (looked for '${rootPath}')`;
       return jsonResponse(
         {
           error:
-            `SharePoint folder not found for ${building.name} (looked for '${building.root_path}'). An admin can fix the path in Settings.`,
+            `SharePoint folder not found for ${where}. An admin can fix the path in Settings.`,
         },
         400,
       );
@@ -79,7 +83,8 @@ Deno.serve(async (req: Request) => {
 
     let results: FileResult[] = [];
     let usedPics = false;
-    if (parsed.picsMode) {
+    // Pics-folder navigation only applies within a single building.
+    if (parsed.picsMode && building) {
       const picsResults = await tryPicsMode(driveId, rootId, parsed.keywordTokens);
       if (picsResults && picsResults.length > 0) {
         results = picsResults;
