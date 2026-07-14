@@ -30,6 +30,8 @@ export interface FileResult {
   previewType: 'pdf' | 'image' | 'dwg' | 'other'
   /** For folder results: segments (relative to the project root) to open it in Browse. */
   browsePath?: string[]
+  /** Short-lived image URL usable directly as an <img src> (images, often PDFs). */
+  thumbnailUrl?: string
 }
 
 export interface SearchResponse {

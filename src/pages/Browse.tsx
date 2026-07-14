@@ -8,7 +8,9 @@ import {
   Loader2,
   FileSearch,
   X,
+  Pin,
 } from 'lucide-react'
+import { usePins } from '../context/PinsContext'
 import {
   browseFolder,
   searchFiles,
@@ -53,6 +55,8 @@ export default function Browse() {
   const path = parsePath(searchParams.get('path'))
   const pathKey = path.join('/')
   const currentFolderName = path.length ? path[path.length - 1] : ROOT_LABEL
+  const { pin, unpin, isPinned } = usePins()
+  const folderPinned = isPinned(path)
 
   const [entries, setEntries] = useState<FileResult[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -234,40 +238,59 @@ export default function Browse() {
           </p>
         </div>
 
-        {/* Breadcrumb */}
-        <nav
-          aria-label="Folder path"
-          className="mt-4 flex flex-wrap items-center gap-1 text-sm"
-        >
-          <button
-            onClick={() => goToCrumb(0)}
-            className={`rounded px-1.5 py-0.5 font-medium ${
-              path.length === 0
-                ? 'text-gray-900'
-                : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
-            }`}
+        {/* Breadcrumb + pin toggle for the current folder */}
+        <div className="mt-4 flex items-start justify-between gap-3">
+          <nav
+            aria-label="Folder path"
+            className="flex flex-wrap items-center gap-1 text-sm"
           >
-            {ROOT_LABEL}
-          </button>
-          {path.map((seg, i) => {
-            const last = i === path.length - 1
-            return (
-              <span key={i} className="flex items-center gap-1">
-                <ChevronRight size={14} className="text-gray-300" />
-                <button
-                  onClick={() => goToCrumb(i + 1)}
-                  className={`rounded px-1.5 py-0.5 ${
-                    last
-                      ? 'font-medium text-gray-900'
-                      : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
-                  }`}
-                >
-                  {seg}
-                </button>
-              </span>
-            )
-          })}
-        </nav>
+            <button
+              onClick={() => goToCrumb(0)}
+              className={`rounded px-1.5 py-0.5 font-medium ${
+                path.length === 0
+                  ? 'text-gray-900'
+                  : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
+              }`}
+            >
+              {ROOT_LABEL}
+            </button>
+            {path.map((seg, i) => {
+              const last = i === path.length - 1
+              return (
+                <span key={i} className="flex items-center gap-1">
+                  <ChevronRight size={14} className="text-gray-300" />
+                  <button
+                    onClick={() => goToCrumb(i + 1)}
+                    className={`rounded px-1.5 py-0.5 ${
+                      last
+                        ? 'font-medium text-gray-900'
+                        : 'text-jade-700 hover:bg-jade-50 dark:text-jade-300'
+                    }`}
+                  >
+                    {seg}
+                  </button>
+                </span>
+              )
+            })}
+          </nav>
+
+          {path.length > 0 && (
+            <button
+              onClick={() =>
+                folderPinned ? unpin(pathKey) : pin(currentFolderName, path)
+              }
+              aria-label={folderPinned ? 'Unpin this folder' : 'Pin this folder'}
+              aria-pressed={folderPinned}
+              className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 ${
+                folderPinned
+                  ? 'border-jade-600 bg-jade-50 text-jade-600 dark:text-jade-300'
+                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              }`}
+            >
+              <Pin size={18} fill={folderPinned ? 'currentColor' : 'none'} />
+            </button>
+          )}
+        </div>
 
         {/* In-folder search (secondary tool, lighter than the main Search page) */}
         <form onSubmit={handleSearchSubmit} className="mt-4">

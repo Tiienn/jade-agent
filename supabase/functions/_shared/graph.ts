@@ -6,6 +6,9 @@ import type { DownloadInfo, FileResult, PreviewType } from "./types.ts";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SELECT = "id,name,size,lastModifiedDateTime,file,folder,parentReference";
+// Per-item small thumbnail (a short-lived pre-authenticated image URL). Kept as
+// a separate query param since $expand is independent of the $select above.
+const THUMB_EXPAND = "thumbnails($select=small)";
 
 function reqEnv(name: string): string {
   const v = Deno.env.get(name);
@@ -179,11 +182,17 @@ export async function searchInFolder(
 ): Promise<FileResult[]> {
   const token = await getGraphToken();
   const escaped = q.replace(/'/g, "''"); // OData: double single-quotes
+  const base =
+    `${GRAPH}/drives/${driveId}/items/${folderId}/search(q='${encodeURIComponent(escaped)}')`;
   // Wide window: broad terms (e.g. "lease") can have >1000 candidates, and
   // since we filter by name AFTER fetching, a narrow window silently drops
   // real matches. Rare terms stop early anyway (no nextLink).
-  let url =
-    `${GRAPH}/drives/${driveId}/items/${folderId}/search(q='${encodeURIComponent(escaped)}')?$top=200&$select=${SELECT}`;
+  const query = `?$top=200&$select=${SELECT}`;
+  // The drive search endpoint rejects $expand on some tenants (400). Attempt
+  // with thumbnails first, then retry once without so search still works —
+  // just without previews — if the expand is what Graph objected to.
+  let expand = `&$expand=${THUMB_EXPAND}`;
+  let url = `${base}${query}${expand}`;
 
   const items: any[] = [];
   let pages = 0;
@@ -191,7 +200,16 @@ export async function searchInFolder(
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) await throwGraph(res);
+    if (!res.ok) {
+      if (res.status === 400 && expand) {
+        // Retry this page (and continue paging) without the expand.
+        await res.body?.cancel();
+        expand = "";
+        url = `${base}${query}`;
+        continue;
+      }
+      await throwGraph(res);
+    }
     const json = await res.json();
     for (const it of json.value ?? []) items.push(it);
     url = json["@odata.nextLink"] ?? "";
@@ -205,7 +223,7 @@ export async function listChildren(
   folderId: string,
 ): Promise<FileResult[]> {
   const json = await graphGet(
-    `/drives/${driveId}/items/${folderId}/children?$top=200&$select=${SELECT}`,
+    `/drives/${driveId}/items/${folderId}/children?$top=200&$select=${SELECT}&$expand=${THUMB_EXPAND}`,
   );
   return (json.value ?? []).map(mapItem);
 }
@@ -281,5 +299,6 @@ function mapItem(it: any): FileResult {
     lastModified: it.lastModifiedDateTime ?? null,
     isFolder,
     previewType: previewTypeOf(ext, isFolder),
+    thumbnailUrl: it.thumbnails?.[0]?.small?.url ?? undefined,
   };
 }

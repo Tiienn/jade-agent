@@ -18,6 +18,8 @@ export interface FileResult {
   lastModified: string | null;
   isFolder: boolean;
   previewType: PreviewType;
+  /** Short-lived small-preview image URL (from Graph thumbnails), if available. */
+  thumbnailUrl?: string;
 }
 
 /** Info needed to stream a file download. */

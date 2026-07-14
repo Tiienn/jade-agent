@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { PinsProvider } from './context/PinsContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -11,7 +12,8 @@ import Settings from './pages/admin/Settings'
 
 export default function App() {
   return (
-    <Routes>
+    <PinsProvider>
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/setup" element={<Setup />} />
 
@@ -69,6 +71,7 @@ export default function App() {
       />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </PinsProvider>
   )
 }

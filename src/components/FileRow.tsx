@@ -1,4 +1,4 @@
-import { type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import { Download, Loader2 } from 'lucide-react'
 import { type FileResult } from '../lib/api'
 import { humanFileSize, formatDate } from '../lib/format'
@@ -24,6 +24,14 @@ export default function FileRow({
   onDownload: () => void
   showPath?: boolean
 }) {
+  // Fall back to the icon if the (short-lived) thumbnail URL fails to load.
+  // Reset the error flag whenever the row's file changes.
+  const [thumbError, setThumbError] = useState(false)
+  useEffect(() => {
+    setThumbError(false)
+  }, [file.id])
+  const showThumb = !!file.thumbnailUrl && !thumbError
+
   function handleKeyDown(e: KeyboardEvent<HTMLLIElement>) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -44,7 +52,18 @@ export default function FileRow({
           : 'border-gray-200 bg-white hover:border-gray-300'
       }`}
     >
-      <FileIcon previewType={file.previewType} size={20} />
+      {showThumb ? (
+        <img
+          key={file.id}
+          src={file.thumbnailUrl}
+          alt=""
+          loading="lazy"
+          onError={() => setThumbError(true)}
+          className="h-10 w-10 shrink-0 rounded-lg border border-gray-200 object-cover"
+        />
+      ) : (
+        <FileIcon previewType={file.previewType} size={20} />
+      )}
       <div className="min-w-0 flex-1">
         <p
           className="truncate text-sm font-medium text-gray-900"

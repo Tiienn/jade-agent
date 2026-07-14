@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Link,
+  NavLink,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
 import {
   Search as SearchIcon,
   FolderOpen,
@@ -11,8 +17,10 @@ import {
   X,
   Sun,
   Moon,
+  Pin,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { usePins, type Pin as PinType } from '../context/PinsContext'
 import { useTheme } from '../lib/useTheme'
 import Logo from './Logo'
 
@@ -68,6 +76,87 @@ function NavLinkItem({
   )
 }
 
+/** Decode a raw ?path= param back into the pin `path` key (segments joined
+ * with '/'), mirroring Browse's parse. */
+function pinKeyFromParam(param: string | null): string | null {
+  if (param === null) return null
+  return param
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return decodeURIComponent(s)
+      } catch {
+        return s
+      }
+    })
+    .join('/')
+}
+
+/** A single PINNED folder link, active when the current Browse ?path= matches. */
+function PinLinkItem({
+  pin,
+  onNavigate,
+  onUnpin,
+  alwaysShowUnpin = false,
+}: {
+  pin: PinType
+  onNavigate?: () => void
+  onUnpin: (path: string) => void
+  alwaysShowUnpin?: boolean
+}) {
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const isActive =
+    location.pathname === '/browse' &&
+    pinKeyFromParam(searchParams.get('path')) === pin.path
+
+  const to = `/browse?path=${pin.path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`
+
+  return (
+    <div className="group relative flex items-center">
+      <Link
+        to={to}
+        onClick={onNavigate}
+        className={`relative flex min-w-0 flex-1 items-center gap-3 rounded-lg py-2 pl-3 pr-9 text-sm font-medium transition-colors ${
+          isActive
+            ? 'bg-jade-50 text-jade-700 dark:text-jade-300'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+        }`}
+      >
+        {isActive && (
+          <span
+            className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-jade-600"
+            aria-hidden="true"
+          />
+        )}
+        <Pin size={18} className="shrink-0" />
+        <span className="min-w-0 truncate">{pin.name}</span>
+      </Link>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onUnpin(pin.path)
+        }}
+        aria-label={`Unpin ${pin.name}`}
+        className={`absolute right-1 inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 ${
+          alwaysShowUnpin
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+        }`}
+      >
+        <X size={16} />
+      </button>
+    </div>
+  )
+}
+
 /** Full sidebar column — reused by the desktop rail and the mobile drawer. */
 function SidebarInner({
   onNavigate,
@@ -77,9 +166,11 @@ function SidebarInner({
   onClose?: () => void
 }) {
   const { profile, logout } = useAuth()
+  const { pins, unpin } = usePins()
   const { theme, toggle } = useTheme()
   const navigate = useNavigate()
   const isAdmin = profile?.role === 'admin'
+  const isMobileDrawer = !!onClose
 
   async function handleLogout() {
     onNavigate?.()
@@ -113,6 +204,22 @@ function SidebarInner({
         {MAIN_LINKS.map((item) => (
           <NavLinkItem key={item.to} item={item} onNavigate={onNavigate} />
         ))}
+        {pins.length > 0 && (
+          <>
+            <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Pinned
+            </p>
+            {pins.map((p) => (
+              <PinLinkItem
+                key={p.id}
+                pin={p}
+                onNavigate={onNavigate}
+                onUnpin={unpin}
+                alwaysShowUnpin={isMobileDrawer}
+              />
+            ))}
+          </>
+        )}
         {isAdmin && (
           <>
             <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
