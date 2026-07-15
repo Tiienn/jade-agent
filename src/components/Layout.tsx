@@ -22,6 +22,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { usePins, type Pin as PinType } from '../context/PinsContext'
 import { useTheme } from '../lib/useTheme'
+import { FEATURE_LINKS } from '../lib/featureLinks'
 import Logo from './Logo'
 
 interface NavItem {
@@ -220,6 +221,12 @@ function SidebarInner({
             ))}
           </>
         )}
+        <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          More
+        </p>
+        {FEATURE_LINKS.map((item) => (
+          <NavLinkItem key={item.to} item={item} onNavigate={onNavigate} />
+        ))}
         {isAdmin && (
           <>
             <p className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">

@@ -6,6 +6,8 @@ import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Search from './pages/Search'
 import Browse from './pages/Browse'
+import ComingSoon from './pages/ComingSoon'
+import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
 import Users from './pages/admin/Users'
 import Settings from './pages/admin/Settings'
@@ -69,6 +71,20 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      {FEATURE_LINKS.map((f) => (
+        <Route
+          key={f.to}
+          path={f.to}
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ComingSoon title={f.label} icon={f.icon} />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+      ))}
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
