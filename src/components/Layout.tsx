@@ -248,7 +248,9 @@ function SidebarInner({
             <p className="truncate text-sm font-medium text-gray-900">
               {profile.display_name}
             </p>
-            <p className="text-xs capitalize text-gray-400">{profile.role}</p>
+            {profile.role === 'admin' && (
+              <p className="text-xs capitalize text-gray-400">{profile.role}</p>
+            )}
           </div>
         )}
         <button
