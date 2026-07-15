@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Search from './pages/Search'
 import Browse from './pages/Browse'
+import Advert from './pages/Advert'
 import ComingSoon from './pages/ComingSoon'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
@@ -67,6 +68,17 @@ export default function App() {
           <ProtectedRoute requireAdmin>
             <Layout>
               <Settings />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/advert"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Advert />
             </Layout>
           </ProtectedRoute>
         }

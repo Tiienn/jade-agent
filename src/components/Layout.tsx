@@ -9,6 +9,7 @@ import {
 import {
   Search as SearchIcon,
   FolderOpen,
+  Megaphone,
   LayoutDashboard,
   Users as UsersIcon,
   Settings as SettingsIcon,
@@ -35,6 +36,7 @@ interface NavItem {
 const MAIN_LINKS: NavItem[] = [
   { to: '/', label: 'Search', icon: SearchIcon, end: true },
   { to: '/browse', label: 'Browse', icon: FolderOpen, end: true },
+  { to: '/advert', label: 'Advert', icon: Megaphone, end: true },
 ]
 
 const ADMIN_LINKS: NavItem[] = [
