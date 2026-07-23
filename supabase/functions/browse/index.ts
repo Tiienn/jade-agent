@@ -13,6 +13,7 @@ import {
   listChildren,
 } from "../_shared/graph.ts";
 import { normalizePath } from "../_shared/paths.ts";
+import { sortNewestFirst } from "../_shared/sort.ts";
 import type { FileResult } from "../_shared/types.ts";
 
 Deno.serve(async (req: Request) => {
@@ -66,12 +67,9 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-/** Folders first, then alphabetical by name (case-insensitive). */
+/** Most recently modified first. */
 function sortEntries(entries: FileResult[]): FileResult[] {
-  return entries.sort((a, b) => {
-    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  });
+  return sortNewestFirst(entries);
 }
 
 function errorResponse(e: unknown): Response {

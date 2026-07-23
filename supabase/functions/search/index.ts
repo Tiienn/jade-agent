@@ -13,6 +13,7 @@ import {
   searchInFolder,
 } from "../_shared/graph.ts";
 import { normalizePath } from "../_shared/paths.ts";
+import { sortNewestFirst } from "../_shared/sort.ts";
 import type { FileResult } from "../_shared/types.ts";
 
 interface BuildingRow {
@@ -108,11 +109,8 @@ Deno.serve(async (req: Request) => {
       results = await normalSearch(driveId, rootId, parsed.keywordTokens, parsed.category);
     }
 
-    // Sort: folders first, then most-recently-modified.
-    results.sort((a, b) => {
-      if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-      return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
-    });
+    // Sort: most recently modified first.
+    sortNewestFirst(results);
 
     const capped = results.slice(0, 250);
 
@@ -129,10 +127,7 @@ Deno.serve(async (req: Request) => {
           parsed.keywordTokens,
           parsed.category,
         );
-        fbResults.sort((a, b) => {
-          if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-          return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
-        });
+        sortNewestFirst(fbResults);
         const fbCapped = fbResults.slice(0, 250);
         if (fbCapped.length > 0) {
           await svc.from("search_logs").insert({
@@ -214,11 +209,8 @@ async function scopedSearch(args: ScopedSearchArgs): Promise<Response> {
     parsed.category,
   );
 
-  // Sort: folders first, then most-recently-modified.
-  results.sort((a, b) => {
-    if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-    return (b.lastModified ?? "").localeCompare(a.lastModified ?? "");
-  });
+  // Sort: most recently modified first.
+  sortNewestFirst(results);
 
   const capped = results.slice(0, 250);
 
