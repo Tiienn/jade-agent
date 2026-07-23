@@ -13,8 +13,7 @@ import {
   listChildren,
 } from "../_shared/graph.ts";
 import { normalizePath } from "../_shared/paths.ts";
-import { sortNewestFirst } from "../_shared/sort.ts";
-import type { FileResult } from "../_shared/types.ts";
+import { sortForDepth } from "../_shared/sort.ts";
 
 Deno.serve(async (req: Request) => {
   const pre = handleOptions(req);
@@ -39,7 +38,10 @@ Deno.serve(async (req: Request) => {
       }
       const entries = body.resolveOnly === true
         ? []
-        : sortEntries(await listChildren(body.driveId, body.itemId));
+        : sortForDepth(
+          await listChildren(body.driveId, body.itemId),
+          segs.length,
+        );
       return jsonResponse({ path: segs, entries: entries.slice(0, 500) });
     }
 
@@ -59,7 +61,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const entries = sortEntries(await listChildren(driveId, folder.id as string));
+    const entries = sortForDepth(
+      await listChildren(driveId, folder.id as string),
+      path.length,
+    );
 
     return jsonResponse({ path, entries: entries.slice(0, 500) });
   } catch (e) {
@@ -67,10 +72,6 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-/** Most recently modified first. */
-function sortEntries(entries: FileResult[]): FileResult[] {
-  return sortNewestFirst(entries);
-}
 
 function errorResponse(e: unknown): Response {
   if (e instanceof HttpError) {
