@@ -11,6 +11,7 @@ import {
   getProjectRoot,
   listChildren,
   searchInFolder,
+  walkFolderTree,
 } from "../_shared/graph.ts";
 import { normalizePath } from "../_shared/paths.ts";
 import { sortNewestFirst } from "../_shared/sort.ts";
@@ -202,7 +203,7 @@ async function scopedSearch(args: ScopedSearchArgs): Promise<Response> {
     );
   }
 
-  const results = await normalSearch(
+  const results = await scopedFolderSearch(
     driveId,
     folder.id as string,
     parsed.keywordTokens,
@@ -268,6 +269,17 @@ async function tryPicsMode(
   return images;
 }
 
+/**
+ * Whole-project / building-scoped search, backed by Graph's `/search(q=…)`
+ * relevance index.
+ *
+ * Known limitation: that index is not a literal substring match, so short mixed
+ * alphanumeric tokens (e.g. "3d") can return nothing even when matching files
+ * exist. `scopedFolderSearch` avoids this by enumerating instead, but that
+ * technique is only affordable for a single browsed folder — these roots are a
+ * whole building or the whole library, where recursive enumeration would be far
+ * too expensive. Left as-is; out of scope for this fix.
+ */
 async function normalSearch(
   driveId: string,
   rootId: string,
@@ -275,47 +287,82 @@ async function normalSearch(
   category: Category,
 ): Promise<FileResult[]> {
   const q = keywordTokens[0] ?? "";
-  let items = await searchInFolder(driveId, rootId, q);
+  const items = await searchInFolder(driveId, rootId, q);
+  return filterItems(items, keywordTokens, category);
+}
 
+/**
+ * In-folder search (from Browse). Enumerates the scoped folder's tree directly
+ * via `walkFolderTree` rather than going through Graph's `/search(q=…)`
+ * relevance index, which unreliably matches short tokens like "3d". Direct
+ * enumeration guarantees every real filename match is found; the walker's item
+ * and depth caps keep the cost bounded (see `walkFolderTree`).
+ */
+async function scopedFolderSearch(
+  driveId: string,
+  folderId: string,
+  keywordTokens: string[],
+  category: Category,
+): Promise<FileResult[]> {
+  const items = await walkFolderTree(driveId, folderId);
+  return filterItems(items, keywordTokens, category);
+}
+
+/** Literal name match on every keyword token, then the category filter. */
+function filterItems(
+  items: FileResult[],
+  keywordTokens: string[],
+  category: Category,
+): FileResult[] {
   // Name must contain every keyword token.
-  items = items.filter((it) =>
+  const named = items.filter((it) =>
     keywordTokens.every((t) => it.name.toLowerCase().includes(t))
   );
+  return named.filter((it) => matchesCategory(it, category));
+}
 
-  // Category filter.
-  items = items.filter((it) => {
-    switch (category) {
-      case "pdf":
-        return it.extension === "pdf";
-      case "dwg":
-        return it.extension === "dwg" || it.extension === "dxf";
-      case "images":
-        return it.previewType === "image";
-      case "plan":
-        return (
-          it.name.toLowerCase().includes("plan") ||
-          it.path
-            .split("/")
-            .some((seg) => seg.trim().toLowerCase().startsWith("plan"))
-        );
-      case "word":
-        return (
-          it.extension === "doc" || it.extension === "docx" ||
-          it.extension === "rtf"
-        );
-      case "excel":
-        return (
-          it.extension === "xls" || it.extension === "xlsx" ||
-          it.extension === "xlsm" || it.extension === "csv"
-        );
-      case "psd":
-        return it.extension === "psd" || it.extension === "psb";
-      default:
-        return true; // 'all'
-    }
-  });
-
-  return items;
+/**
+ * Category → file-type mapping.
+ *
+ * KEEP IN SYNC with `matchesCategory` in `src/lib/categoryMatch.ts`, which
+ * filters the Browse listing client-side. The two can't share code — this runs
+ * on Deno/edge, that one in the browser — so any change here must be mirrored
+ * there.
+ *
+ * Note folders have an empty extension, so any category other than 'all' drops
+ * them from search results. That's intentional here; Browse deliberately keeps
+ * folders visible while filtering so users can still navigate.
+ */
+function matchesCategory(it: FileResult, category: Category): boolean {
+  switch (category) {
+    case "pdf":
+      return it.extension === "pdf";
+    case "dwg":
+      return it.extension === "dwg" || it.extension === "dxf";
+    case "images":
+      return it.previewType === "image";
+    case "plan":
+      return (
+        it.name.toLowerCase().includes("plan") ||
+        it.path
+          .split("/")
+          .some((seg) => seg.trim().toLowerCase().startsWith("plan"))
+      );
+    case "word":
+      return (
+        it.extension === "doc" || it.extension === "docx" ||
+        it.extension === "rtf"
+      );
+    case "excel":
+      return (
+        it.extension === "xls" || it.extension === "xlsx" ||
+        it.extension === "xlsm" || it.extension === "csv"
+      );
+    case "psd":
+      return it.extension === "psd" || it.extension === "psb";
+    default:
+      return true; // 'all'
+  }
 }
 
 function errorResponse(e: unknown): Response {

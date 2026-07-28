@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   ChevronRight,
@@ -22,6 +28,7 @@ import {
   type FileResult,
 } from '../lib/api'
 import { CATEGORIES } from '../lib/categories'
+import { filterEntriesByCategory, matchesCategory } from '../lib/categoryMatch'
 import { useIsDesktop } from '../lib/useIsDesktop'
 import FileIcon from '../components/FileIcon'
 import FileRow from '../components/FileRow'
@@ -156,8 +163,15 @@ export default function Browse() {
 
   function handleSearchCategory(next: Category) {
     setSearchCategory(next)
-    // Re-run with the new category if results are already on screen.
+    // Re-run with the new category if results are already on screen. With no
+    // text search running, the chip filters the plain listing client-side (see
+    // visibleEntries) — no round trip needed, we already have every entry.
     if (searchActive && submittedQuery) runInFolderSearch(submittedQuery, next)
+    // Don't keep previewing a file the new filter just hid.
+    if (!searchActive && selected && !matchesCategory(selected, next)) {
+      setSelected(null)
+      setExpanded(false)
+    }
   }
 
   function clearSearch() {
@@ -222,11 +236,31 @@ export default function Browse() {
     }
   }
 
+  // Listing mode: the category chip filters what's already on screen. Folders
+  // always stay visible so the user can keep navigating while filtering.
+  const visibleEntries = useMemo(
+    () => (entries ? filterEntriesByCategory(entries, searchCategory) : null),
+    [entries, searchCategory],
+  )
+
   const activeLoading = searchActive ? searchLoading : loading
   const activeError = searchActive ? searchError : error
-  const hasEntries = !loading && !!entries && entries.length > 0
+  const hasEntries = !loading && !!visibleEntries && visibleEntries.length > 0
   const hasResults =
     !searchLoading && !!searchResults && searchResults.length > 0
+
+  // The folder genuinely has nothing in it.
+  const folderEmpty = !searchActive && !loading && !error && entries?.length === 0
+  // The folder has contents, but the active category chip filtered them all out.
+  const filteredEmpty =
+    !searchActive &&
+    !loading &&
+    !error &&
+    !!entries &&
+    entries.length > 0 &&
+    visibleEntries?.length === 0
+  const categoryLabel =
+    CATEGORIES.find((c) => c.value === searchCategory)?.label ?? ''
 
   return (
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-y-auto p-4 sm:p-6 lg:overflow-hidden">
@@ -404,20 +438,39 @@ export default function Browse() {
         )}
 
         {/* Empty folder (listing mode) */}
-        {!searchActive &&
-          !loading &&
-          entries &&
-          entries.length === 0 &&
-          !error && (
-            <div className="mt-10 flex flex-col items-center text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
-                <FolderClosed size={26} />
-              </div>
-              <p className="mt-3 text-sm font-medium text-gray-900">
-                This folder is empty
-              </p>
+        {folderEmpty && (
+          <div className="mt-10 flex flex-col items-center text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
+              <FolderClosed size={26} />
             </div>
-          )}
+            <p className="mt-3 text-sm font-medium text-gray-900">
+              This folder is empty
+            </p>
+          </div>
+        )}
+
+        {/* Category filter emptied a non-empty folder (listing mode) */}
+        {filteredEmpty && (
+          <div className="mt-10 flex flex-col items-center text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
+              <FileSearch size={26} />
+            </div>
+            <p className="mt-3 text-sm font-medium text-gray-900">
+              No {categoryLabel} files in this folder
+            </p>
+            <p className="mt-1 max-w-xs text-sm text-gray-500">
+              This folder has {entries!.length} item
+              {entries!.length === 1 ? '' : 's'}, but none match the{' '}
+              {categoryLabel} filter.
+            </p>
+            <button
+              onClick={() => setSearchCategory('all')}
+              className="mt-4 inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 bg-white px-4 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
+            >
+              Show all files
+            </button>
+          </div>
+        )}
 
         {/* Zero results (search mode) */}
         {searchActive &&
@@ -443,7 +496,7 @@ export default function Browse() {
       {!searchActive && hasEntries && (
         <div className="mt-3 min-h-0 flex-1 lg:grid lg:grid-cols-5 lg:gap-6">
           <ul className="space-y-3 lg:col-span-2 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-            {entries!.map((entry) =>
+            {visibleEntries!.map((entry) =>
               entry.isFolder ? (
                 <BrowseFolderRow
                   key={entry.id}
