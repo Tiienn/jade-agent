@@ -218,14 +218,97 @@ export async function searchInFolder(
   return items.map(mapItem);
 }
 
+/**
+ * List one folder level. Follows Graph's `@odata.nextLink` so folders with more
+ * than the 200-per-page window are returned complete — callers (Browse and the
+ * scoped-search walker) rely on getting every child, not just the first page.
+ * Capped at 10 pages (~2000 items) as a runaway guard.
+ */
 export async function listChildren(
   driveId: string,
   folderId: string,
 ): Promise<FileResult[]> {
-  const json = await graphGet(
-    `/drives/${driveId}/items/${folderId}/children?$top=200&$select=${SELECT}&$expand=${THUMB_EXPAND}`,
-  );
-  return (json.value ?? []).map(mapItem);
+  const token = await getGraphToken();
+  let url =
+    `${GRAPH}/drives/${driveId}/items/${folderId}/children?$top=200&$select=${SELECT}&$expand=${THUMB_EXPAND}`;
+
+  const items: any[] = [];
+  let pages = 0;
+  while (url && pages < 10) {
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) await throwGraph(res);
+    const json = await res.json();
+    for (const it of json.value ?? []) items.push(it);
+    url = json["@odata.nextLink"] ?? "";
+    pages += 1;
+  }
+  return items.map(mapItem);
+}
+
+/** Budget for {@link walkFolderTree}. See the note on the function itself. */
+export const WALK_MAX_ITEMS = 3000;
+export const WALK_MAX_DEPTH = 8;
+/** Folders fetched in parallel per tree level — keeps latency sane without
+ * hammering Graph hard enough to get throttled. */
+const WALK_CONCURRENCY = 6;
+
+/**
+ * Enumerate a folder tree breadth-first via {@link listChildren}, returning
+ * every file and folder found (the scoped folder itself is not included).
+ *
+ * This exists because Graph's `/search(q=…)` endpoint is a relevance/full-text
+ * index, not a literal substring match: short mixed alphanumeric tokens like
+ * "3d" are unreliably indexed and simply never come back, even when files with
+ * that exact substring exist. Direct enumeration is deterministic, so callers
+ * can do their own literal matching and always find real filename matches.
+ *
+ * Budget: stops after `maxItems` items or `maxDepth` levels and returns what it
+ * found so far. That trades completeness on pathologically large trees for
+ * predictable latency and cost on the common case (a working folder with tens
+ * to low hundreds of items); this is why the technique is used only for
+ * folder-scoped search, not whole-project search.
+ */
+export async function walkFolderTree(
+  driveId: string,
+  rootId: string,
+  opts: { maxItems?: number; maxDepth?: number } = {},
+): Promise<FileResult[]> {
+  const maxItems = opts.maxItems ?? WALK_MAX_ITEMS;
+  const maxDepth = opts.maxDepth ?? WALK_MAX_DEPTH;
+
+  // Warm the token cache first so the parallel batches below don't each race to
+  // fetch their own on a cold start.
+  await getGraphToken();
+
+  const collected: FileResult[] = [];
+  let queue: string[] = [rootId];
+  let depth = 0;
+
+  // Breadth-first, one tree level per outer iteration, folders within a level
+  // fetched in parallel batches.
+  while (queue.length > 0 && collected.length < maxItems && depth < maxDepth) {
+    const next: string[] = [];
+    for (let i = 0; i < queue.length; i += WALK_CONCURRENCY) {
+      if (collected.length >= maxItems) break;
+      const batch = queue.slice(i, i + WALK_CONCURRENCY);
+      const listings = await Promise.all(
+        batch.map((id) => listChildren(driveId, id)),
+      );
+      for (const children of listings) {
+        for (const child of children) {
+          if (collected.length >= maxItems) break;
+          collected.push(child);
+          if (child.isFolder) next.push(child.id);
+        }
+      }
+    }
+    queue = next;
+    depth += 1;
+  }
+
+  return collected;
 }
 
 export async function getDownloadInfo(
