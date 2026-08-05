@@ -12,6 +12,11 @@
 export type Register = "internal" | "vendor" | "formal";
 
 export interface StyleProfile {
+  /**
+   * Universal sign-off — every email he sends ends this way, in every
+   * register, to everyone. Deliberately NOT per-register: there is one
+   * sign-off and duplicating it per register would only let it drift.
+   */
   signOff: string;
   registers: Record<Register, RegisterStyle>;
   globalRules: string[];
@@ -22,8 +27,7 @@ export interface RegisterStyle {
   appliesTo: string;
   greeting: string;
   bodyGuidance: string;
-  closing: string;
-  /** Real examples from his sent mail. */
+  /** Real examples from his sent mail (bodies only — the sign-off is universal). */
   examples: string[];
 }
 
@@ -46,7 +50,6 @@ export const STYLE_PROFILE: StyleProfile = {
         "message. Never explain more than asked. State what was done, not that " +
         "he is happy to help. No pleasantries, no 'let me know if you need " +
         "anything else'.",
-      closing: "Regards / Stephan Ah-Thien",
       examples: [
         "Price and Area updated",
         "To print A3",
@@ -67,9 +70,9 @@ export const STYLE_PROFILE: StyleProfile = {
       greeting: "'Hi <FirstName>,' or 'Hi <CompanyShortName>,'.",
       bodyGuidance:
         "Direct question or instruction, two or three short lines. Gets " +
-        "straight to the ask. Often closes with 'Thanks' instead of the full " +
-        "sign-off on quick requests.",
-      closing: "Thanks — or Regards / Stephan Ah-Thien on anything substantive.",
+        "straight to the ask. May end the body with 'Thanks' on a quick " +
+        "request — that is the last line of the body, not a replacement for " +
+        "the sign-off, which always follows.",
       examples: [
         "Hi Northern,\n\nDo you have roll up banner?\nIf yes, please quote for available sizes.\nThanks",
       ],
@@ -85,7 +88,6 @@ export const STYLE_PROFILE: StyleProfile = {
         "('I hope you are well', thanks for meeting). States the purpose, " +
         "lists what is attached, closes politely. This is the ONLY register " +
         "where he writes at length.",
-      closing: "Regards / Stephan Ah-Thien",
       examples: [
         "Dear Ms Geshna,\n\nI hope you are well. Thank you for taking the time to meet with me last week regarding the opening of a business account for my restaurant, Mr Chef.\n\nAs discussed, please find attached the business plan and two-year financial forecast.",
       ],
@@ -112,6 +114,9 @@ export const STYLE_PROFILE: StyleProfile = {
     "No emojis in correspondence. (Emojis appear only in marketing copy he " +
       "drafts for Facebook posts, which is a different job.)",
     "Never write a closing offer of further help. He simply stops.",
+    "ALWAYS end with the exact sign-off, in every register, to everyone — " +
+      "colleagues, suppliers, banks alike. Never substitute 'Best regards', " +
+      "'Kind regards', 'Cheers', or a bare 'Thanks' for it.",
   ],
 };
 
@@ -159,9 +164,12 @@ export function stylePromptFor(register: Register): string {
     `Applies to: ${r.appliesTo}`,
     `Greeting: ${r.greeting}`,
     `Body: ${r.bodyGuidance}`,
-    `Closing: ${r.closing}`,
     "",
-    "Real examples of how he writes in this register:",
+    "Sign-off — use exactly this, verbatim, on every email:",
+    STYLE_PROFILE.signOff,
+    "",
+    "Real examples of how he writes in this register (bodies only — the " +
+      "sign-off above still follows each one):",
     ...r.examples.map((e) => `---\n${e}\n---`),
     "",
     "Rules that always apply:",
