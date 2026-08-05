@@ -33,8 +33,11 @@ export const STYLE_PROFILE: StyleProfile = {
   registers: {
     internal: {
       appliesTo:
-        "Anyone @jadegroup.mu (Charles Li, Ashwiny Appadoo, Meera Beedassy, " +
-        "Kelly Chan, Nisha Ortoo, Vincent Fonsing, Melanie Lau).",
+        "Anyone at @jadegroup.mu (Charles Li, Ashwiny Appadoo, Meera Beedassy, " +
+        "Kelly Chan, Nisha Ortoo, Vincent Fonsing, Melanie Lau) AND anyone at " +
+        "@pmlservices.mu (M. Chengadu, R. Chinganee). He is not formal with " +
+        "any of them — PML are long-standing working colleagues, not a vendor " +
+        "he has to impress. See INFORMAL_DOMAINS.",
       greeting:
         "None. He does not write 'Hi Charles' to colleagues. For a group, " +
         "occasionally 'Hi all,'.",
@@ -51,13 +54,16 @@ export const STYLE_PROFILE: StyleProfile = {
         "Orchard 2nd Floor Fact Sheets",
         "Please find attached doc. You will find each description for FB post",
         "I dont have pictures of ex geneva office. I went there on Saturday, and the keys for 3rd Floor are at the office.",
+        // To PML Services — same terse, greeting-less register as jadegroup.mu.
+        "The images provided are for illustration purposes only. I'm not able to provide the exact sign dimensions or verify them on-site, as the signage is located on the Manhattan façade. You may need to arrange for someone to take measurements directly.",
       ],
     },
 
     vendor: {
       appliesTo:
-        "External suppliers and service providers he deals with routinely " +
-        "(printers, PML Services, contractors).",
+        "Genuinely external suppliers he deals with transactionally — " +
+        "printers, signage makers, one-off contractors. NOT PML Services " +
+        "(they are informal, see the internal register).",
       greeting: "'Hi <FirstName>,' or 'Hi <CompanyShortName>,'.",
       bodyGuidance:
         "Direct question or instruction, two or three short lines. Gets " +
@@ -66,7 +72,6 @@ export const STYLE_PROFILE: StyleProfile = {
       closing: "Thanks — or Regards / Stephan Ah-Thien on anything substantive.",
       examples: [
         "Hi Northern,\n\nDo you have roll up banner?\nIf yes, please quote for available sizes.\nThanks",
-        "The images provided are for illustration purposes only. I'm not able to provide the exact sign dimensions or verify them on-site, as the signage is located on the Manhattan façade. You may need to arrange for someone to take measurements directly.",
       ],
     },
 
@@ -110,13 +115,40 @@ export const STYLE_PROFILE: StyleProfile = {
   ],
 };
 
-/** Choose the register for a recipient address. */
+/**
+ * Domains he is never formal with. Colleagues in all but the billing sense —
+ * same terse, greeting-less style as his own company. Add domains here as the
+ * circle grows; this is the one knob that changes how a whole group is
+ * addressed, so keep it deliberate.
+ */
+export const INFORMAL_DOMAINS = [
+  "jadegroup.mu",
+  "pmlservices.mu",
+];
+
+/**
+ * Default register for a recipient address.
+ *
+ * An informal domain is decisive — never escalate above "internal" for those,
+ * no matter how formally the incoming mail is written.
+ *
+ * For everyone else this returns "vendor" as the floor, and the drafting
+ * prompt may escalate to "formal" when the incoming message is clearly
+ * institutional: a bank, a tender body, legal correspondence, or a first
+ * contact that addresses him as "Dear Mr Ah Thien". Domain alone cannot tell
+ * a printer from a bank, so that judgement is left to the model with the
+ * thread in front of it.
+ */
 export function registerFor(recipientEmail: string): Register {
-  const addr = recipientEmail.toLowerCase();
-  if (addr.endsWith("@jadegroup.mu")) return "internal";
-  // Long-standing service partners are handled like vendors, not institutions.
-  if (addr.endsWith("@pmlservices.mu")) return "vendor";
+  const addr = recipientEmail.toLowerCase().trim();
+  const domain = addr.slice(addr.lastIndexOf("@") + 1);
+  if (INFORMAL_DOMAINS.includes(domain)) return "internal";
   return "vendor";
+}
+
+/** True when the recipient must never be addressed formally. */
+export function isInformalRecipient(recipientEmail: string): boolean {
+  return registerFor(recipientEmail) === "internal";
 }
 
 /** Build the style section of the drafting prompt. */
