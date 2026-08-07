@@ -1,108 +1,92 @@
 # Email Assistant — Setup
 
-Three things need doing before the email agent can run. Two are in Microsoft,
-one is OpenAI. Everything else is already built or will be.
-
-The agent will: read your mailbox 4× a day (09:00, 12:00, 15:00, 17:00
-Mauritius time), sort what actually needs a reply from the noise, and write
-draft replies in your style. **It will never send anything.** That is enforced
-by not granting it permission to send — see step 1.
+The agent reads your mailbox 4× a day (09:00, 12:00, 15:00, 17:00 Mauritius
+time), separates what needs a reply from the noise, and writes draft replies in
+your style. **It cannot send email.** That is not a policy — the app never
+requests permission to send, so there is no code path that could.
 
 ---
 
-## 1. Let the app read your mailbox (Azure)
+## How access works (and why it changed)
 
-The app already has a Microsoft app registration for SharePoint file search.
-We add mailbox permission to that same registration.
+The agent signs in **as you**, once. Microsoft then issues it a token that
+reaches your mailbox and nothing else.
 
-1. Go to **portal.azure.com** → **Microsoft Entra ID** → **App registrations**
-2. Open **Jade File Finder** (Client ID `b0673ca1-ad39-44f9-b3e7-8df0d6bbf17b`)
-3. Left menu → **API permissions** → **+ Add a permission**
-4. **Microsoft Graph** → **Application permissions**
-5. Tick **`Mail.ReadWrite`** → **Add permissions**
-6. Click **Grant admin consent for Jade Group** and confirm
+An earlier design used an *application* permission, where the app authenticates
+as itself. That approach grants access to **every mailbox in the company** by
+default and has to be fenced back in with an Exchange policy. We tried it: the
+fence was created, Microsoft's own test reported it active, and the app could
+still read colleagues' mailboxes 42 minutes later. That permission was revoked
+and removed.
 
-> **Why `Mail.ReadWrite` and not `Mail.Send`?**
-> `Mail.ReadWrite` lets the agent read your mail and *save drafts*. It does not
-> allow sending. We deliberately never request `Mail.Send`, so even a bug or a
-> misread instruction cannot put an email on the wire. Sending stays a thing
-> only you can do, from Outlook.
+Delegated sign-in removes the problem rather than configuring around it. There
+is no company-wide key to leak or misconfigure — the agent is you, so it can
+only see what you can see.
 
 ---
 
-## 2. Lock that access to your mailbox only (Exchange) — important
+## 1. Azure — already done
 
-Step 1 on its own grants the app access to **every mailbox at Jade Group**.
-That is far more than this feature needs. This step restricts it to yours.
+Configured on the `Jade File Finder` app registration
+(`b0673ca1-ad39-44f9-b3e7-8df0d6bbf17b`):
 
-Open **PowerShell** on Windows and run:
+| Setting | Value |
+| --- | --- |
+| `Mail.ReadWrite` | **Delegated** — "read and write access to *user* mail" |
+| `offline_access` | Delegated — lets the scheduled job keep working without you re-signing in |
+| Redirect URI (Web) | `https://nfnpwkkcafaumxrqjdai.supabase.co/functions/v1/mail-callback` |
 
-```powershell
-Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser
-Connect-ExchangeOnline -UserPrincipalName Stephan.AhThien@jadegroup.mu
-```
+Admin consent was deliberately **not** pre-granted. You approve these yourself
+at first sign-in, on Microsoft's own consent screen, so you can see exactly what
+is being asked for.
 
-Then create the restriction:
-
-```powershell
-New-ApplicationAccessPolicy `
-  -AppId b0673ca1-ad39-44f9-b3e7-8df0d6bbf17b `
-  -PolicyScopeGroupId Stephan.AhThien@jadegroup.mu `
-  -AccessRight RestrictAccess `
-  -Description "Jade Agent email assistant - Stephan's mailbox only"
-```
-
-Verify it worked — the first should say **granted**, the second **denied**:
-
-```powershell
-Test-ApplicationAccessPolicy -Identity Stephan.AhThien@jadegroup.mu -AppId b0673ca1-ad39-44f9-b3e7-8df0d6bbf17b
-Test-ApplicationAccessPolicy -Identity Charles.Li@jadegroup.mu -AppId b0673ca1-ad39-44f9-b3e7-8df0d6bbf17b
-```
-
-Policy changes can take up to ~30 minutes to apply across the tenant.
-
-> Microsoft also offers a newer method for this (*RBAC for Applications* in the
-> Exchange admin centre) which achieves the same lock-down. If your tenant
-> pushes you toward that instead, either is fine — the goal is simply that this
-> App ID can reach only your mailbox.
+`Mail.ReadWrite` as an *Application* permission was removed. SharePoint file
+search is untouched and still uses its own app-only permissions.
 
 ---
 
-## 3. OpenAI API key
+## 2. OpenAI key
 
-Only the *drafting* needs this. The sorting/triage is plain rules and costs
-nothing.
+Only *drafting* needs this. Triage is plain rules and costs nothing — newsletters
+and staff notices are filtered out before anything reaches OpenAI.
 
-1. Go to **platform.openai.com** → sign in
-2. **API keys** → **Create new secret key** → name it `Jade Agent`
-3. Copy it immediately (shown once)
-4. **Billing** → add a payment method and around **$20** of credit
-
-Then store it as a backend secret (never in the website code):
+1. **platform.openai.com** → API keys → Create new secret key
+2. Billing → add roughly **$20** of credit
 
 ```bash
 cd ~/projects/jade-agent
-supabase secrets set OPENAI_API_KEY=sk-paste_your_key_here
+supabase secrets set OPENAI_API_KEY=sk-your-key-here
 ```
 
-Expected cost at your volume is roughly **$5–15/month**. Only the handful of
-emails that survive triage are ever sent to OpenAI — newsletters and staff
-broadcasts are filtered out by rules first and never leave Microsoft.
+Expect **$5–15/month** at your volume. To change model:
+`supabase secrets set OPENAI_MODEL=gpt-4o` (that is the default).
 
 ---
 
-## What gets stored, and what doesn't
+## 3. Connect your mailbox
 
-- **Stored** in the database: sender, subject, date, and the triage decision —
-  enough to show you a priority list and to remember "always ignore this
-  sender".
-- **Not stored**: email bodies. They are fetched from Microsoft when needed and
-  discarded after the draft is written.
-- Drafts live in your Outlook Drafts folder (and are listed in the app).
+Once deployed: open **Jade Agent → Email → Connect mailbox**, sign in as
+`Stephan.AhThien@jadegroup.mu`, and approve. That is the only time you sign in;
+`offline_access` keeps it working afterwards.
 
-## What the agent will never do
+To disconnect at any point, either use the app or revoke it yourself at
+**myaccount.microsoft.com → Privacy → Apps and services**.
 
-- Send an email (no permission to, by design)
+---
+
+## What is stored
+
+- **Kept:** sender, subject, date, and the triage decision — enough for a
+  priority list and to remember "always ignore this sender".
+- **Not kept:** message bodies. Fetched from Microsoft only while a draft is
+  being written, then discarded.
+- **Refresh token:** in a table with row-level security enabled and *no access
+  policies at all*, so no browser session can read it — only the server.
+- Drafts are created in your Outlook Drafts folder and listed in the app.
+
+## What it will never do
+
+- Send an email — the permission is not requested
 - Delete anything
-- Read anyone else's mailbox (blocked by step 2)
-- Reply to anything on its own — every draft waits for you
+- Read anyone else's mailbox — Microsoft prevents it; it signs in as you
+- Reply on its own — every draft waits for you to press send
