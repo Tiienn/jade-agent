@@ -55,8 +55,14 @@ and staff notices are filtered out before anything reaches OpenAI.
 
 ```bash
 cd ~/projects/jade-agent
-supabase secrets set OPENAI_API_KEY=sk-your-key-here
+supabase secrets set OPENAI_API_KEY=PASTE_THE_REAL_KEY_HERE
 ```
+
+> Replace `PASTE_THE_REAL_KEY_HERE` with the key you just copied — it starts
+> `sk-` and is about 50 characters. Running the line unchanged stores the
+> placeholder itself, and drafting then fails with
+> `Incorrect API key provided`. To check what is stored, re-run the command
+> with the correct key; it overwrites.
 
 Expect **$5–15/month** at your volume. To change model:
 `supabase secrets set OPENAI_MODEL=gpt-4o` (that is the default).
