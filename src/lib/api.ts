@@ -62,9 +62,9 @@ export class ApiError extends Error {
   }
 }
 
-const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`
+export const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`
 
-async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(): Promise<Record<string, string>> {
   const {
     data: { session },
   } = await supabase.auth.getSession()
@@ -85,7 +85,10 @@ function anonHeaders(): Record<string, string> {
   }
 }
 
-async function parseJsonError(res: Response, fallback: string): Promise<never> {
+export async function parseJsonError(
+  res: Response,
+  fallback: string,
+): Promise<never> {
   let message = fallback
   let code: string | undefined
   try {

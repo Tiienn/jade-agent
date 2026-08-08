@@ -51,6 +51,16 @@
   --color-red-50: #3a1c1c;
   --color-red-200: #5c2b2b;
   --color-red-700: #fca5a5;
+
+  /* Warning banner (e.g. "reconnect your mailbox"), same recipe as red. */
+  --color-amber-50: #37280e;
+  --color-amber-200: #5a4218;
+  --color-amber-700: #fcd34d;
+
+  /* Success note (e.g. "Mailbox connected"), same recipe as red. */
+  --color-green-50: #14301f;
+  --color-green-200: #225034;
+  --color-green-700: #86efac;
 }
 
 body {

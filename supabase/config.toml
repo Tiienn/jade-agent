@@ -27,3 +27,6 @@ verify_jwt = false
 
 [functions.mail-draft]
 verify_jwt = false
+
+[functions.mail-status]
+verify_jwt = false

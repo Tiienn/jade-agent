@@ -7,6 +7,7 @@ import Setup from './pages/Setup'
 import Search from './pages/Search'
 import Browse from './pages/Browse'
 import Advert from './pages/Advert'
+import Email from './pages/Email'
 import ComingSoon from './pages/ComingSoon'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
@@ -79,6 +80,19 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Advert />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Must stay exactly /email — mail-callback redirects the browser here
+          with ?connected=1 or ?error=<code> after Microsoft consent. */}
+      <Route
+        path="/email"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Email />
             </Layout>
           </ProtectedRoute>
         }
