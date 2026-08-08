@@ -52,11 +52,32 @@ function tally(counts: Counts, verdict: Triage): void {
   else counts.ignored += 1;
 }
 
-/** Cron mode when the shared secret matches. Constant-time to avoid leaking it. */
-function isCronRequest(req: Request): boolean {
+/**
+ * Cron mode when the shared secret matches.
+ *
+ * The expected value is read from `public.cron_config`, which pg_cron also
+ * reads when it builds the request. One source of truth, generated in the
+ * database and never copied anywhere — see migration 0004. The older env-var
+ * approach required the same secret in two places and would fail open-ended
+ * and silently if they ever drifted.
+ *
+ * Comparison is constant-time so a wrong guess cannot be narrowed by timing.
+ */
+async function isCronRequest(
+  req: Request,
+  svc: SupabaseClient,
+): Promise<boolean> {
   const presented = req.headers.get("x-cron-secret");
-  const expected = Deno.env.get("CRON_SECRET");
-  if (!presented || !expected) return false;
+  if (!presented) return false;
+
+  const { data, error } = await svc
+    .from("cron_config")
+    .select("cron_secret")
+    .limit(1)
+    .maybeSingle();
+  const expected = error ? null : (data?.cron_secret as string | undefined);
+  if (!expected) return false;
+
   if (presented.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < presented.length; i++) {
@@ -75,12 +96,12 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
     // Only an interactive caller may widen their own window; the scheduler
     // always uses the normal forward-moving window.
-    const cron = isCronRequest(req);
+    const svc = serviceClient();
+    const cron = await isCronRequest(req, svc);
     const sinceHours = !cron && typeof body.sinceHours === "number"
       ? body.sinceHours
       : undefined;
 
-    const svc = serviceClient();
     const accounts = cron
       ? await loadAllAccounts(svc)
       : await loadOneAccount(svc, (await requireActiveUser(req)).user.id);
