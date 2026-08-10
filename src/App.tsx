@@ -10,6 +10,7 @@ import Advert from './pages/Advert'
 import Email from './pages/Email'
 import Report from './pages/Report'
 import Leave from './pages/Leave'
+import Calendar from './pages/Calendar'
 import ComingSoon from './pages/ComingSoon'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
@@ -123,6 +124,21 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Leave />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Meetings and dated notes. Open to every signed-in user: reading the
+          diary and organising a meeting need nothing but a login, and the two
+          things that do need a roster row — being invited, and answering an
+          invitation — are gated inside the page. */}
+      <Route
+        path="/calendar"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Calendar />
             </Layout>
           </ProtectedRoute>
         }

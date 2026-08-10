@@ -13,6 +13,7 @@ import {
   Mail,
   FileText,
   CalendarCheck,
+  CalendarDays,
   LayoutDashboard,
   Users as UsersIcon,
   Settings as SettingsIcon,
@@ -46,6 +47,10 @@ const MAIN_LINKS: NavItem[] = [
   // come to be out. Visible to everyone, not just admins — filing a request is
   // the one thing every member of staff does here.
   { to: '/leave', label: 'Leave', icon: CalendarCheck, end: true },
+  // After Leave, closing the same loop: Report is who is out, Leave is how they
+  // come to be out, Calendar is what everyone is doing — and it is the one page
+  // that reads the other two, warning about absences as a meeting is arranged.
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays, end: true },
 ]
 
 const ADMIN_LINKS: NavItem[] = [
