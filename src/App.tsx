@@ -8,6 +8,7 @@ import Search from './pages/Search'
 import Browse from './pages/Browse'
 import Advert from './pages/Advert'
 import Email from './pages/Email'
+import Report from './pages/Report'
 import ComingSoon from './pages/ComingSoon'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
@@ -93,6 +94,19 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Email />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Staff presence board. The roster panel inside is admin-gated by the
+          page itself, so the route stays open to every signed-in user. */}
+      <Route
+        path="/report"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Report />
             </Layout>
           </ProtectedRoute>
         }

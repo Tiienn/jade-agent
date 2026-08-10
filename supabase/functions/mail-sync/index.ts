@@ -9,15 +9,32 @@
 // the triage decision. Message BODIES ARE NEVER WRITTEN — email_messages has no
 // column for one. Bodies are fetched only when a draft is being written
 // (mail-draft) and are discarded with the request.
+//
+// A second, additive pass runs over the same fetched messages: the office
+// manager's all-staff absence notices are extracted into staff_presence so the
+// presence board can be read at a glance. It changes no triage verdict — those
+// mails were and remain "ignore / sent to all staff" — and its failures are
+// contained, because delivering the mailbox is the primary job of this
+// function.
 
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 import { HttpError, requireActiveUser, serviceClient } from "../_shared/auth.ts";
 import {
   accessTokenFromRefresh,
+  getMessageBody,
   listInboxSince,
   type MailMessage,
 } from "../_shared/graphMail.ts";
 import { triage, type Triage } from "../_shared/triage.ts";
+import { extractPresence, isPresenceEmail } from "../_shared/presence.ts";
+import {
+  loadAnnouncers,
+  loadRoster,
+  presenceSource,
+  resolveFacts,
+  type RosterEntry,
+  storePresence,
+} from "../_shared/presenceStore.ts";
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 
 /** How far back a first-ever sync reaches. Older mail is already handled. */
@@ -39,10 +56,23 @@ interface Counts {
   action: number;
   fyi: number;
   ignored: number;
+  /** staff_presence rows written this run. Independent of the triage tallies:
+   *  a presence email is counted in `ignored` as well, because it genuinely is
+   *  an all-staff mail nobody has to answer. */
+  presence: number;
 }
 
 function emptyCounts(): Counts {
-  return { synced: 0, action: 0, fyi: 0, ignored: 0 };
+  return { synced: 0, action: 0, fyi: 0, ignored: 0, presence: 0 };
+}
+
+/**
+ * Everything the presence pass needs that does not vary per message.
+ * Null when it could not be loaded — see loadPresenceConfig.
+ */
+interface PresenceConfig {
+  announcers: string[];
+  roster: RosterEntry[];
 }
 
 function tally(counts: Counts, verdict: Triage): void {
@@ -106,17 +136,24 @@ Deno.serve(async (req: Request) => {
       ? await loadAllAccounts(svc)
       : await loadOneAccount(svc, (await requireActiveUser(req)).user.id);
 
+    // ONCE per run, before the account loop. Both tables are company-wide and a
+    // few dozen rows: loading them per account (or, worse, per message) would
+    // turn a cron sweep into hundreds of identical queries for data that cannot
+    // change mid-run.
+    const presenceConfig = await loadPresenceConfig(svc);
+
     const totals = emptyCounts();
     for (const account of accounts) {
       // One account's failure must not abort the sweep — a revoked mailbox
       // would otherwise stop every other account from syncing. The error is
       // recorded on the row so the UI can show "reconnect your mailbox".
       try {
-        const counts = await syncAccount(svc, account, sinceHours);
+        const counts = await syncAccount(svc, account, sinceHours, presenceConfig);
         totals.synced += counts.synced;
         totals.action += counts.action;
         totals.fyi += counts.fyi;
         totals.ignored += counts.ignored;
+        totals.presence += counts.presence;
       } catch (e) {
         const message = e instanceof Error ? e.message : "Sync failed";
         await svc
@@ -175,7 +212,8 @@ async function loadOneAccount(
 async function syncAccount(
   svc: SupabaseClient,
   account: MailAccount,
-  sinceHours?: number,
+  sinceHours: number | undefined,
+  presenceConfig: PresenceConfig | null,
 ): Promise<Counts> {
   const { accessToken, refreshToken } = await accessTokenFromRefresh(
     account.refresh_token,
@@ -253,6 +291,11 @@ async function syncAccount(
     if (error) throw new HttpError(500, "Could not save messages");
   }
 
+  // Additive second pass over the SAME messages. Deliberately after the
+  // envelopes are safely stored, and deliberately unable to throw: mail triage
+  // is what this function is for.
+  counts.presence = await syncPresence(svc, accessToken, messages, presenceConfig);
+
   const { error } = await svc
     .from("mail_accounts")
     .update({
@@ -275,6 +318,117 @@ async function loadRules(
     .eq("user_id", userId);
   if (error) throw new HttpError(500, "Could not load your email rules");
   return (data ?? []) as { pattern: string; action: "ignore" | "prioritise" }[];
+}
+
+// ---------------------------------------------------------------------------
+// Presence extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Announcers + roster, or null if either could not be read.
+ *
+ * Returning null instead of throwing is the first half of the containment rule:
+ * a missing table, a permissions change or a slow query must not stop a mailbox
+ * from syncing. The board falling behind is a nuisance; mail not arriving is
+ * the thing the office actually notices.
+ */
+async function loadPresenceConfig(
+  svc: SupabaseClient,
+): Promise<PresenceConfig | null> {
+  try {
+    const [announcers, roster] = await Promise.all([
+      loadAnnouncers(svc),
+      loadRoster(svc),
+    ]);
+    return { announcers, roster };
+  } catch (e) {
+    console.error("presence: could not load configuration", e);
+    return null;
+  }
+}
+
+/**
+ * Extract absences from the announcer mail in `messages`. Never throws.
+ *
+ * !! MESSAGE BODIES ARE NEVER PERSISTED. !!
+ * The full body is fetched here because bodyPreview truncates at ~255
+ * characters and cuts the multi-person notices in half (see getMessageBody).
+ * It is read, turned into facts, and dropped when this iteration ends. Nothing
+ * downstream stores it, no column exists for it, and none should be added:
+ * email_messages holds envelopes only, on purpose. If you are here to "avoid
+ * re-fetching" by caching bodies in the database, that is the change this
+ * comment exists to stop.
+ *
+ * KNOWN LIMIT, harmless today and not so tomorrow: the row identity is the
+ * Graph message id, which is per MAILBOX. One all-staff notice therefore has a
+ * different id in every recipient's inbox, so the day a second colleague
+ * connects their mailbox the cron sweep will file that notice twice — same
+ * person, same date, two rows. Today exactly one mailbox is connected. The fix
+ * when that changes is `internetMessageId` (the RFC 5322 Message-ID, identical
+ * in every copy) as source_message_id, which makes the dedupe index in 0006
+ * collapse them on its own; it needs a re-read of the comment there, since that
+ * column is documented as the email_messages id.
+ */
+async function syncPresence(
+  svc: SupabaseClient,
+  accessToken: string,
+  messages: MailMessage[],
+  config: PresenceConfig | null,
+): Promise<number> {
+  // No announcers configured means nothing qualifies — fail closed, the same
+  // way isPresenceEmail does. Skipping the loop entirely also avoids a body
+  // fetch per message on installs that never turn this on.
+  if (!config || config.announcers.length === 0) return 0;
+
+  let written = 0;
+  for (const m of messages) {
+    if (!m.id) continue;
+
+    // Gate on the preview first. It is truncated, but the lead-in ("Please note
+    // that") sits in the first line of every one of these, and the subject
+    // fallback catches the rest — so this rejects the other 99% of the mailbox
+    // without spending a Graph call on it.
+    if (
+      !isPresenceEmail({
+        fromEmail: m.fromEmail,
+        subject: m.subject,
+        body: m.bodyPreview,
+        announcerEmails: config.announcers,
+      })
+    ) continue;
+
+    try {
+      const body = await getMessageBody(accessToken, m.id);
+      const facts = extractPresence({
+        subject: m.subject,
+        body,
+        // These are internal mails delivered in seconds, so received time is
+        // the send time for every practical purpose — and it is the only
+        // timestamp listInboxSince selects.
+        sentAt: m.receivedAt ?? "",
+        fromEmail: m.fromEmail,
+      });
+      // Key the rows on the announcement's RFC 5322 Message-ID, not this
+      // mailbox's Graph id — see presenceSource(). The cron sweep visits every
+      // connected mailbox, and an all-staff notice sits in all of them; keying
+      // on the per-mailbox id would file the same absence once per recipient
+      // who happens to use the app.
+      const source = presenceSource(
+        m.internetMessageId,
+        m.id,
+        resolveFacts(facts, config.roster),
+      );
+      written += await storePresence(svc, source.messageId, source.rows);
+    } catch (e) {
+      // Per message, so one unreadable notice cannot cost us the others in the
+      // same run. Logged rather than written to mail_accounts.last_sync_error:
+      // that column drives a "reconnect your mailbox" prompt in the UI, and
+      // sending the user to re-authorise Microsoft over a presence bug would be
+      // a lie about what is broken.
+      console.error(`presence: message ${m.id} failed`, e);
+    }
+  }
+  return written;
 }
 
 function rowFor(

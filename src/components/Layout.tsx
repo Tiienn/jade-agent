@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Megaphone,
   Mail,
+  FileText,
   LayoutDashboard,
   Users as UsersIcon,
   Settings as SettingsIcon,
@@ -39,6 +40,7 @@ const MAIN_LINKS: NavItem[] = [
   { to: '/browse', label: 'Browse', icon: FolderOpen, end: true },
   { to: '/advert', label: 'Advert', icon: Megaphone, end: true },
   { to: '/email', label: 'Email', icon: Mail, end: true },
+  { to: '/report', label: 'Report', icon: FileText, end: true },
 ]
 
 const ADMIN_LINKS: NavItem[] = [

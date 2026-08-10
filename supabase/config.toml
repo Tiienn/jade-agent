@@ -30,3 +30,8 @@ verify_jwt = false
 
 [functions.mail-status]
 verify_jwt = false
+
+# Same as every other function here: the platform gate is off and the JWT is
+# verified in-function (requireAdmin), so the CORS preflight can reach it.
+[functions.presence-backfill]
+verify_jwt = false

@@ -36,8 +36,20 @@ export function mailRedirectUri(): string {
   return `${reqEnv("SUPABASE_URL")}/functions/v1/mail-callback`;
 }
 
+// Shared by every message-listing call below, so a property added here reaches
+// listInboxSince, listMessagesFromSender and getMessageWithBody at once.
+//
+// `internetMessageId` is the RFC 5322 Message-ID. It is here because `id` is
+// not enough to identify an ANNOUNCEMENT: Graph's `id` is per-mailbox, so one
+// all-staff mail carries a different `id` in every recipient's inbox. See the
+// comment on staff_presence.source_message_id in migration 0008.
+//
+// (The warning elsewhere in this codebase that $select makes Graph drop
+// `@microsoft.graph.downloadUrl` is about DRIVE items. It does not apply to
+// messages, and does not stop us selecting narrowly here.)
 const MESSAGE_SELECT = [
   "id",
+  "internetMessageId",
   "conversationId",
   "subject",
   "from",
@@ -51,6 +63,13 @@ const MESSAGE_SELECT = [
 
 /** Pages of inbox messages to follow per sync. See listInboxSince. */
 const MAX_PAGES = 5;
+
+/**
+ * Pages to follow per announcer during a presence backfill. Higher than
+ * MAX_PAGES because a backfill deliberately reaches months back, and lower than
+ * unbounded because it runs inside one HTTP request an admin is waiting on.
+ */
+const BACKFILL_MAX_PAGES = 12;
 
 function reqEnv(name: string): string {
   const v = Deno.env.get(name);
@@ -68,7 +87,15 @@ function reqEnv(name: string): string {
 // ---------------------------------------------------------------------------
 
 export interface MailMessage {
+  /** Graph's own id. Per MAILBOX — two people holding the same mail hold two. */
   id: string;
+  /**
+   * The RFC 5322 Message-ID, stamped by the sending server and therefore the
+   * SAME string in every recipient's copy. Null when the sender omitted it,
+   * which is malformed but not impossible — callers that use it as an identity
+   * must cope. See presenceSource in presenceStore.ts.
+   */
+  internetMessageId: string | null;
   conversationId: string | null;
   subject: string;
   fromEmail: string;
@@ -127,10 +154,16 @@ async function throwGraph(res: Response): Promise<never> {
   throw new HttpError(502, `Microsoft Graph error (${res.status}). ${detail}`);
 }
 
-async function graphGet(accessToken: string, url: string): Promise<any> {
+async function graphGet(
+  accessToken: string,
+  url: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<any> {
   const res = await fetch(
     url.startsWith("http") ? url : `${GRAPH}${url}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
+    {
+      headers: { Authorization: `Bearer ${accessToken}`, ...extraHeaders },
+    },
   );
   if (!res.ok) await throwGraph(res);
   return res.json();
@@ -264,6 +297,8 @@ function addressesOf(recipients: any): string[] {
 function mapMessage(m: any): MailMessage {
   return {
     id: String(m.id ?? ""),
+    // Empty collapses to null so callers have one "absent" to test, not two.
+    internetMessageId: String(m.internetMessageId ?? "").trim() || null,
     conversationId: m.conversationId ?? null,
     subject: m.subject ?? "",
     fromEmail: String(m.from?.emailAddress?.address ?? "").trim(),
@@ -331,6 +366,107 @@ export async function getMessageWithBody(
       contentType: json.body?.contentType ?? "text",
     },
   };
+}
+
+/**
+ * Just the body text of one message, as plain text.
+ *
+ * Exists because `bodyPreview` — the only body-ish field listInboxSince selects
+ * — is capped by Graph at roughly 255 characters. That is fine for triage,
+ * which only sniffs for keywords, and useless for presence extraction: the
+ * multi-person notices are a bulleted list, and 255 characters reaches the
+ * second bullet. Reading the truncated preview would silently file two of the
+ * four people named and leave the rest at their desks on the board.
+ *
+ * `Prefer: outlook.body-content-type="text"` asks Exchange to do the HTML
+ * flattening server-side, which it does far better than a regex can. Outlook
+ * still returns HTML for some messages, so the crude fallback below stands in
+ * — it only has to be good enough for the sentence-level parsing in
+ * presence.ts, which reads lines and bullets and ignores everything else.
+ *
+ * Returns TEXT, not a message: nothing about this body should end up in a row.
+ * Callers extract from it and let it go out of scope. See the header comment in
+ * mail-sync — email_messages has no body column, deliberately.
+ */
+export async function getMessageBody(
+  accessToken: string,
+  messageId: string,
+): Promise<string> {
+  const json = await graphGet(
+    accessToken,
+    `/me/messages/${encodeURIComponent(messageId)}?$select=body`,
+    { Prefer: 'outlook.body-content-type="text"' },
+  );
+  const content = String(json?.body?.content ?? "");
+  const type = String(json?.body?.contentType ?? "text").toLowerCase();
+  return type === "html" ? htmlToText(content) : content;
+}
+
+/** Crude HTML flattening — see getMessageBody for why crude is enough. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    // Block-level closers become newlines so a bulleted absence list survives
+    // as one line per person, which is exactly what splitClauses expects.
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** OData string literals escape a single quote by doubling it. */
+function odataString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Messages from one sender since `sinceIso`, across ALL folders.
+ *
+ * For the presence backfill, not for sync. Two deliberate differences from
+ * listInboxSince:
+ *
+ *   * `/me/messages` rather than the inbox, because a backfill reaches months
+ *     back and by then the notices have usually been filed or archived. An
+ *     absence announcement that was moved out of the inbox still happened.
+ *   * NO `$orderby`. Exchange rejects the combination of a `from` filter with
+ *     an ordering on a different property ("The restriction or sort order is
+ *     too complex"), and losing the order costs nothing here: the caller
+ *     examines every message it gets rather than taking the newest N.
+ *
+ * Paging stops at `max` messages or {@link BACKFILL_MAX_PAGES}, whichever comes
+ * first, so a chatty announcer cannot turn one backfill into an unbounded walk
+ * of the mailbox.
+ */
+export async function listMessagesFromSender(
+  accessToken: string,
+  fromEmail: string,
+  sinceIso: string,
+  max: number,
+): Promise<MailMessage[]> {
+  const filter = `receivedDateTime ge ${sinceIso} and ` +
+    `from/emailAddress/address eq ${odataString(fromEmail.trim().toLowerCase())}`;
+  let url = `${GRAPH}/me/messages` +
+    `?$select=${MESSAGE_SELECT}` +
+    `&$filter=${encodeURIComponent(filter)}` +
+    `&$top=${Math.min(Math.max(max, 1), 50)}`;
+
+  const items: any[] = [];
+  let pages = 0;
+  while (url && pages < BACKFILL_MAX_PAGES && items.length < max) {
+    const json = await graphGet(accessToken, url);
+    for (const m of json.value ?? []) items.push(m);
+    url = json["@odata.nextLink"] ?? "";
+    pages += 1;
+  }
+  return items.slice(0, max).map(mapMessage);
 }
 
 // ---------------------------------------------------------------------------
