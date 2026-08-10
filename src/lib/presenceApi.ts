@@ -12,8 +12,13 @@
 //
 // Reads go through supabase-js directly, the same way the email pages read
 // email_messages — RLS is the authority, not this file.
+//
+// The one exception is the login helpers at the bottom: creating a login and
+// attaching it to a roster row needs the service role, so those go through the
+// `admin-users` edge function rather than the table.
 
 import { supabase } from './supabase'
+import { adminUsers } from './api'
 
 export type PresenceStatus =
   | 'sick'
@@ -48,6 +53,13 @@ export interface StaffMember {
   manager_id: string | null
   is_manager: boolean
   active: boolean
+  /**
+   * The login this person signs in with, or null — which is the normal state:
+   * most of the roster has no account yet. Unique in the schema, so one login
+   * belongs to exactly one roster row. Set through `linkLoginToStaff` below,
+   * never through `updateStaffMember`.
+   */
+  profile_id: string | null
   created_at: string
 }
 
@@ -100,7 +112,7 @@ const PRESENCE_COLUMNS =
   'staff:staff_directory(id,full_name,known_as,department)'
 
 const STAFF_COLUMNS =
-  'id,full_name,known_as,aliases,email,department,manager_id,is_manager,active,created_at'
+  'id,full_name,known_as,aliases,email,department,manager_id,is_manager,active,profile_id,created_at'
 
 /** Writes to staff_directory fail this way for anyone who is not an admin. */
 const NOT_ADMIN =
@@ -274,7 +286,48 @@ export async function updateStaffMember(
   return data as unknown as StaffMember
 }
 
+/**
+ * How many board rows a person carries. Zero means removing them destroys
+ * nothing; anything above zero means removal is not the operation the admin
+ * thinks it is.
+ */
+export async function countPresenceRowsFor(staffId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('staff_presence')
+    .select('id', { count: 'exact', head: true })
+    .eq('staff_id', staffId)
+  if (error) {
+    throw new Error(writeMessage(error, 'Could not check that person’s history.'))
+  }
+  return count ?? 0
+}
+
+/**
+ * Remove someone from the roster — but ONLY when they have no attendance
+ * history.
+ *
+ * `staff_presence.staff_id` is `on delete cascade`, so a plain DELETE here
+ * silently takes every absence ever recorded against that person with it.
+ * Migration 0006 is explicit that this is not what should happen: "Leavers are
+ * deactivated, never deleted: their past presence rows must keep resolving to
+ * a name." The cascade exists for the other case — a row created by mistake,
+ * or a misread name that was never a person — where there is nothing to lose.
+ *
+ * So this checks first and refuses rather than asking the database to decide.
+ * The caller is expected to offer deactivation instead, which is what the rest
+ * of this schema does with people who leave (profiles.active,
+ * staff_directory.active, presence_announcers.active).
+ */
 export async function deleteStaffMember(id: string): Promise<void> {
+  const rows = await countPresenceRowsFor(id)
+  if (rows > 0) {
+    throw new Error(
+      `This person has ${rows} recorded ${rows === 1 ? 'absence' : 'absences'}. ` +
+        'Removing them would delete that history too. Mark them inactive instead — ' +
+        'they disappear from the roster and from new matching, but the board keeps its record.',
+    )
+  }
+
   const { error } = await supabase.from('staff_directory').delete().eq('id', id)
   if (error) {
     throw new Error(writeMessage(error, 'Could not remove that person.'))
@@ -324,4 +377,90 @@ export function addNameToRoster(
 /** Postgres 42501 is RLS refusing the write — say so in plain words. */
 function writeMessage(error: { code?: string }, fallback: string): string {
   return error.code === '42501' ? NOT_ADMIN : fallback
+}
+
+// ---------------------------------------------------------------------------
+// Logins
+//
+// `staff_directory.profile_id` is what turns a signed-in session into a roster
+// row, and leave routing depends on it: an unlinked account can read the board
+// but cannot file for itself. Every call here goes through the `admin-users`
+// edge function — creating an account needs the service role, and the function
+// is also where "that person already has a different login" is turned into a
+// sentence instead of a unique-constraint violation.
+// ---------------------------------------------------------------------------
+
+/** A row of `profiles`, as `admin-users` reports it. */
+export interface LoginAccount {
+  id: string
+  username: string
+  displayName: string
+  role: 'admin' | 'worker'
+  active: boolean
+}
+
+/** Every login on the system. Admin-only; the function enforces that. */
+export async function fetchLoginAccounts(): Promise<LoginAccount[]> {
+  const res = await adminUsers<{ users: LoginAccount[] }>({ action: 'list' })
+  return res.users ?? []
+}
+
+/**
+ * Attach `userId` to a roster row, or pass `staffId: null` to detach it.
+ *
+ * The function moves the login off whoever held it before, so this is a move
+ * rather than a copy. It answers 409 with a readable message when the *target*
+ * row already belongs to a different login — the caller should show it as-is.
+ */
+export async function linkLoginToStaff(
+  userId: string,
+  staffId: string | null,
+): Promise<void> {
+  await adminUsers({ action: 'linkStaff', userId, staffId })
+}
+
+export interface CreatedLogin {
+  account: LoginAccount
+  /**
+   * Non-null when the account was created but could not be attached to the
+   * roster row. The account still exists — this is a warning, never a failure.
+   */
+  linkWarning: string | null
+}
+
+/** Create a worker login and, in the same step, link it to a roster person. */
+export async function createLoginForStaff(input: {
+  username: string
+  password: string
+  displayName: string
+  staffId: string
+}): Promise<CreatedLogin> {
+  const res = await adminUsers<{
+    user: LoginAccount
+    staffId: string | null
+    linkWarning: string | null
+  }>({
+    action: 'create',
+    username: input.username,
+    password: input.password,
+    displayName: input.displayName,
+    staffId: input.staffId,
+  })
+  return { account: res.user, linkWarning: res.linkWarning ?? null }
+}
+
+/**
+ * A username to open the "create a login" field on: "Kavi Ramdin" → "kaviramdin".
+ * Accents are folded rather than dropped so "Désiré" keeps its letters, and the
+ * result is trimmed to the 30 characters the backend accepts. It is only a
+ * starting point — the field stays editable, and the admin usually only has to
+ * type a password.
+ */
+export function suggestUsername(fullName: string): string {
+  return fullName
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 30)
 }

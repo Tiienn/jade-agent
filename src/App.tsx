@@ -9,6 +9,7 @@ import Browse from './pages/Browse'
 import Advert from './pages/Advert'
 import Email from './pages/Email'
 import Report from './pages/Report'
+import Leave from './pages/Leave'
 import ComingSoon from './pages/ComingSoon'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
@@ -107,6 +108,21 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Report />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Leave requests. Open to every signed-in user: the request form, the
+          "my requests" list and the approval queue are each gated inside the
+          page by whether the user is on the roster, and by who a request was
+          routed to. */}
+      <Route
+        path="/leave"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Leave />
             </Layout>
           </ProtectedRoute>
         }

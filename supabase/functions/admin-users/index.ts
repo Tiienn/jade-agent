@@ -85,7 +85,20 @@ Deno.serve(async (req: Request) => {
         const username = requireValidUsername(body.username);
         const password = requireValidPassword(body.password);
         const displayName = resolveDisplayName(body.displayName, username);
-        return await createAccount(svc, username, displayName, password, "worker");
+        // Optional: link the new login to a roster person in the same step.
+        // Onboarding 15 staff one screen at a time is the difference between
+        // this feature being used and being abandoned, and an account created
+        // now and linked "later" is an account that can read the board but
+        // cannot file its own leave.
+        const staffId = body.staffId == null ? null : String(body.staffId);
+        return await createAccount(
+          svc,
+          username,
+          displayName,
+          password,
+          "worker",
+          staffId,
+        );
       }
 
       case "setActive": {
@@ -114,20 +127,86 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ ok: true });
       }
 
-      case "delete": {
+      // Kept under the name "delete" so existing callers keep working, but it
+      // DEACTIVATES. Since 0010, leave_requests references profiles with
+      // `on delete restrict` on submitted_by_profile_id and
+      // decided_by_profile_id, so once an account has filed or decided any
+      // leave, auth.admin.deleteUser fails with a raw foreign-key error that
+      // means nothing to whoever clicked the button.
+      //
+      // That constraint is deliberate rather than an obstacle: "who approved
+      // this absence" has to survive the approver leaving the company, or the
+      // audit trail is only as durable as the staff list. Deactivation is
+      // already how the rest of this schema retires people (profiles.active,
+      // staff_directory.active, presence_announcers.active), so this now
+      // matches its neighbours instead of being the one path that destroys
+      // history.
+      //
+      // The account keeps its roster link. Unlinking is a separate, explicit
+      // act — a deactivated login still identifies a real person on the board.
+      case "delete":
+      case "deactivate": {
         const userId = requireUserId(body.userId);
         const { data: target } = await svc
           .from("profiles")
           .select("role")
           .eq("id", userId)
           .maybeSingle();
-        if (target?.role === "admin") {
-          throw new HttpError(403, "Admin accounts can't be deleted.");
+        if (!target) throw new HttpError(404, "No such user.");
+        if (target.role === "admin") {
+          throw new HttpError(403, "Admin accounts can't be deactivated.");
         }
-        // FK cascade removes the profile row + logs.
-        const { error } = await svc.auth.admin.deleteUser(userId);
+        const { error } = await svc
+          .from("profiles")
+          .update({ active: false })
+          .eq("id", userId);
         if (error) throw new HttpError(500, error.message);
-        return jsonResponse({ ok: true });
+        return jsonResponse({ ok: true, deactivated: true });
+      }
+
+      // Attach a login to a roster person, or detach it. Sending a null
+      // staffId unlinks whatever this profile is currently attached to.
+      //
+      // This is what makes leave requests work at all: leave-submit finds the
+      // caller through staff_directory.profile_id, so an unlinked account can
+      // read the board but cannot file for itself. With 3 logins against 18
+      // staff, most people start unlinked.
+      case "linkStaff": {
+        const userId = requireUserId(body.userId);
+        const staffId = body.staffId == null ? null : String(body.staffId);
+
+        // Clear any previous holder first. profile_id is UNIQUE, so without
+        // this a re-link fails on the constraint rather than moving the login.
+        const { error: clearError } = await svc
+          .from("staff_directory")
+          .update({ profile_id: null })
+          .eq("profile_id", userId);
+        if (clearError) throw new HttpError(500, clearError.message);
+
+        if (staffId === null) return jsonResponse({ ok: true, staffId: null });
+
+        const { data: holder } = await svc
+          .from("staff_directory")
+          .select("id,profile_id,known_as")
+          .eq("id", staffId)
+          .maybeSingle();
+        if (!holder) throw new HttpError(404, "No such staff member.");
+        if (holder.profile_id && holder.profile_id !== userId) {
+          // A plain unique-violation here would surface as "duplicate key
+          // value violates unique constraint", which tells the admin nothing
+          // about what to do next.
+          throw new HttpError(
+            409,
+            `${holder.known_as} is already linked to another login. Unlink that one first.`,
+          );
+        }
+
+        const { error } = await svc
+          .from("staff_directory")
+          .update({ profile_id: userId })
+          .eq("id", staffId);
+        if (error) throw new HttpError(500, error.message);
+        return jsonResponse({ ok: true, staffId });
       }
 
       default:
@@ -169,6 +248,7 @@ async function createAccount(
   displayName: string,
   password: string,
   role: "admin" | "worker",
+  staffId: string | null = null,
 ): Promise<Response> {
   // Friendly duplicate check before touching auth.
   const { data: existing } = await svc
@@ -209,8 +289,39 @@ async function createAccount(
     throw new HttpError(500, "Could not create the account profile.");
   }
 
+  // Linking is attempted AFTER the account exists and is reported separately.
+  // A roster row that someone else already claimed must not destroy a
+  // perfectly good new login — the admin can link it afterwards, but they
+  // cannot un-create an account they were told failed. So a link failure is
+  // returned as a warning on a successful response, not thrown.
+  let linkWarning: string | null = null;
+  if (staffId) {
+    const { data: holder } = await svc
+      .from("staff_directory")
+      .select("id,profile_id,known_as")
+      .eq("id", staffId)
+      .maybeSingle();
+
+    if (!holder) {
+      linkWarning = "The account was created, but that staff member no longer exists.";
+    } else if (holder.profile_id) {
+      linkWarning =
+        `The account was created, but ${holder.known_as} is already linked to another login.`;
+    } else {
+      const { error: lErr } = await svc
+        .from("staff_directory")
+        .update({ profile_id: uid })
+        .eq("id", staffId);
+      if (lErr) {
+        linkWarning = "The account was created, but linking it to the staff member failed.";
+      }
+    }
+  }
+
   return jsonResponse({
     ok: true,
     user: { id: uid, username, displayName, role, active: true },
+    staffId: linkWarning ? null : staffId,
+    linkWarning,
   });
 }

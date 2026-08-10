@@ -528,3 +528,66 @@ export async function createReplyDraft(
 
   return draftId;
 }
+
+/**
+ * Create a NEW (unthreaded) draft in the user's Drafts folder and return its id.
+ *
+ * `createReplyDraft` above cannot serve this: Graph's `/createReply` needs an
+ * existing message to hang the reply on, and a leave confirmation or an
+ * all-staff absence notice answers nothing — it starts a thread. So this POSTs
+ * the whole message to `/me/messages`, which Graph files as a draft because no
+ * send is requested.
+ *
+ * Recipients are passed as plain addresses and mapped into Graph's shape here,
+ * so callers never hand-build `emailAddress` objects and cannot accidentally
+ * put an address in the wrong field.
+ *
+ * !! The same rule as above applies, and matters more here. !!
+ * There is no send function in this module and there must never be one. A reply
+ * draft at least requires a real message someone sent us; THIS function can
+ * address anyone, so it would be the obvious place to "just add a send". The
+ * app does not hold the Mail.Send scope (see MAIL_SCOPES), so Microsoft refuses
+ * to transmit whatever this produces — a human opens Outlook and presses Send.
+ * That is the guarantee which lets an automated approval write an all-staff
+ * email at all. Adding a send helper would remove it silently.
+ */
+export async function createNewDraft(
+  accessToken: string,
+  to: string[],
+  subject: string,
+  bodyHtml: string,
+): Promise<string> {
+  const recipients = to
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0)
+    .map((address) => ({ emailAddress: { address } }));
+
+  if (recipients.length === 0) {
+    // Graph would happily store a draft addressed to nobody. Refusing here is
+    // kinder than a silent no-op: the caller has lost a recipient somewhere
+    // (most often a roster entry with no email), and that is worth surfacing
+    // rather than discovering later as a confirmation that never arrived.
+    throw new HttpError(400, "Cannot create a draft with no recipients.");
+  }
+
+  const res = await fetch(`${GRAPH}/me/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      subject,
+      body: { contentType: "HTML", content: bodyHtml },
+      toRecipients: recipients,
+    }),
+  });
+  if (!res.ok) await throwGraph(res);
+
+  const draft = await res.json();
+  const draftId = String(draft.id ?? "");
+  if (!draftId) {
+    throw new HttpError(502, "Microsoft Graph returned a draft with no id.");
+  }
+  return draftId;
+}

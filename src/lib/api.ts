@@ -172,6 +172,15 @@ export async function fetchFileBlob(
   return await res.blob()
 }
 
+/**
+ * What `admin-users` accepts as a username, mirrored client-side so the field
+ * can say so before a round trip. The backend validates the same rule.
+ */
+export const USERNAME_RE = /^[a-z0-9._-]{3,30}$/
+
+export const USERNAME_HINT =
+  '3–30 characters: lowercase letters, numbers, and . _ -'
+
 export async function adminUsers<T = unknown>(
   payload: Record<string, unknown>,
 ): Promise<T> {

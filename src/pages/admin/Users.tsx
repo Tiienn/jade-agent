@@ -8,17 +8,14 @@ import {
   KeyRound,
   UserX,
   UserCheck,
-  Trash2,
-  Copy,
   Check,
-  RefreshCw,
 } from 'lucide-react'
-import { adminUsers, ApiError } from '../../lib/api'
+import { adminUsers, ApiError, USERNAME_HINT, USERNAME_RE } from '../../lib/api'
 import { formatDate } from '../../lib/format'
-import { generatePassword } from '../../lib/password'
 import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/admin/Modal'
 import ConfirmDialog from '../../components/admin/ConfirmDialog'
+import PasswordField from '../../components/admin/PasswordField'
 
 interface AdminUser {
   id: string
@@ -29,8 +26,6 @@ interface AdminUser {
   createdAt: string
 }
 
-const USERNAME_RE = /^[a-z0-9._-]{3,30}$/
-
 export default function Users() {
   const { profile } = useAuth()
   const [users, setUsers] = useState<AdminUser[] | null>(null)
@@ -39,10 +34,8 @@ export default function Users() {
 
   const [showAdd, setShowAdd] = useState(false)
   const [resetFor, setResetFor] = useState<AdminUser | null>(null)
-  const [confirm, setConfirm] = useState<
-    | { kind: 'disable' | 'delete'; user: AdminUser }
-    | null
-  >(null)
+  /** The account waiting on a "yes, deactivate them" from the dialog. */
+  const [confirm, setConfirm] = useState<AdminUser | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -63,10 +56,18 @@ export default function Users() {
     load()
   }, [load])
 
+  /**
+   * Reactivating is instant; deactivating goes through the dialog.
+   *
+   * There is deliberately only one control here. Accounts are no longer
+   * deleted — `leave_requests` references `profiles` with `on delete restrict`
+   * so that "who approved this absence" outlives the approver leaving — which
+   * made the old Delete button and this toggle the same operation wearing
+   * different words. The destructive-looking one is gone.
+   */
   async function handleToggleActive(user: AdminUser) {
-    // Enabling is instant; disabling is confirmed via the dialog.
     if (user.active) {
-      setConfirm({ kind: 'disable', user })
+      setConfirm(user)
       return
     }
     setActionBusy(true)
@@ -80,19 +81,11 @@ export default function Users() {
     }
   }
 
-  async function confirmAction() {
+  async function confirmDeactivate() {
     if (!confirm) return
     setActionBusy(true)
     try {
-      if (confirm.kind === 'disable') {
-        await adminUsers({
-          action: 'setActive',
-          userId: confirm.user.id,
-          active: false,
-        })
-      } else {
-        await adminUsers({ action: 'delete', userId: confirm.user.id })
-      }
+      await adminUsers({ action: 'deactivate', userId: confirm.id })
       setConfirm(null)
       await load()
     } catch (err) {
@@ -152,7 +145,6 @@ export default function Users() {
               busy={actionBusy}
               onReset={() => setResetFor(u)}
               onToggleActive={() => handleToggleActive(u)}
-              onDelete={() => setConfirm({ kind: 'delete', user: u })}
             />
           ))}
         </ul>
@@ -184,20 +176,11 @@ export default function Users() {
 
       {confirm && (
         <ConfirmDialog
-          title={
-            confirm.kind === 'disable'
-              ? `Disable ${confirm.user.displayName}?`
-              : `Delete ${confirm.user.displayName}?`
-          }
-          message={
-            confirm.kind === 'disable'
-              ? 'They will be signed out and cannot log in until re-enabled. Their search history is kept.'
-              : 'This permanently removes the account AND their search history — consider Disable instead.'
-          }
-          confirmLabel={confirm.kind === 'disable' ? 'Disable' : 'Delete'}
-          destructive={confirm.kind === 'delete'}
+          title={`Deactivate ${confirm.displayName}?`}
+          message="They will be signed out and cannot sign in until reactivated. Nothing is deleted — their search history, leave requests and approvals are kept, and you can reactivate the account at any time."
+          confirmLabel="Deactivate"
           busy={actionBusy}
-          onConfirm={confirmAction}
+          onConfirm={confirmDeactivate}
           onCancel={() => setConfirm(null)}
         />
       )}
@@ -211,14 +194,12 @@ function UserRow({
   busy,
   onReset,
   onToggleActive,
-  onDelete,
 }: {
   user: AdminUser
   isSelf: boolean
   busy: boolean
   onReset: () => void
   onToggleActive: () => void
-  onDelete: () => void
 }) {
   const isAdmin = user.role === 'admin'
   return (
@@ -245,7 +226,7 @@ function UserRow({
               </span>
             ) : (
               <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-                Disabled
+                Deactivated
               </span>
             )}
           </div>
@@ -273,94 +254,30 @@ function UserRow({
             </button>
             <button
               onClick={onToggleActive}
-              disabled={busy}
+              disabled={busy || (user.active && isSelf)}
+              title={
+                user.active && isSelf
+                  ? 'You cannot deactivate your own account.'
+                  : undefined
+              }
               className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
             >
               {user.active ? (
                 <>
                   <UserX size={15} />
-                  Disable
+                  Deactivate
                 </>
               ) : (
                 <>
                   <UserCheck size={15} />
-                  Enable
+                  Reactivate
                 </>
               )}
-            </button>
-            <button
-              onClick={onDelete}
-              disabled={busy || isSelf}
-              title={isSelf ? 'You cannot delete your own account.' : undefined}
-              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
-            >
-              <Trash2 size={15} />
-              Delete
             </button>
           </div>
         )}
       </div>
     </li>
-  )
-}
-
-/** Shared password input with generate + copy. */
-function PasswordField({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
-  const [copied, setCopied] = useState(false)
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard may be unavailable — the admin can select the text manually.
-    }
-  }
-
-  return (
-    <div>
-      <div className="flex gap-2">
-        <input
-          type="text"
-          autoCapitalize="none"
-          autoCorrect="off"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="At least 8 characters"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 font-mono text-sm outline-none transition focus:border-jade-600 focus:ring-2 focus:ring-jade-600/20"
-        />
-        {value && (
-          <button
-            type="button"
-            onClick={copy}
-            className="inline-flex min-h-[44px] w-11 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-600 transition-colors hover:bg-gray-50"
-            aria-label="Copy password"
-            title="Copy"
-          >
-            {copied ? (
-              <Check size={16} className="text-jade-600" />
-            ) : (
-              <Copy size={16} />
-            )}
-          </button>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={() => onChange(generatePassword())}
-        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-jade-700 hover:text-jade-800"
-      >
-        <RefreshCw size={14} />
-        Generate a password
-      </button>
-    </div>
   )
 }
 
@@ -384,7 +301,7 @@ function AddWorkerModal({
 
     const uname = username.trim().toLowerCase()
     if (!USERNAME_RE.test(uname)) {
-      setError('Username must be 3–30 characters: lowercase letters, numbers, and . _ -')
+      setError(`Username must be ${USERNAME_HINT}`)
       return
     }
     if (!displayName.trim()) {
@@ -437,9 +354,7 @@ function AddWorkerModal({
             placeholder="e.g. meera"
             className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-base outline-none transition focus:border-jade-600 focus:ring-2 focus:ring-jade-600/20"
           />
-          <span className="mt-1 block text-xs text-gray-400">
-            3–30 characters: lowercase letters, numbers, and . _ -
-          </span>
+          <span className="mt-1 block text-xs text-gray-400">{USERNAME_HINT}</span>
         </label>
 
         <label className="mt-4 block">

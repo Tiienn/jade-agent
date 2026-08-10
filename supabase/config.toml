@@ -35,3 +35,19 @@ verify_jwt = false
 # verified in-function (requireAdmin), so the CORS preflight can reach it.
 [functions.presence-backfill]
 verify_jwt = false
+
+# Leave requests. Same arrangement as everything above — the platform JWT gate
+# is off so the browser's CORS preflight (which carries no Authorization
+# header) is not rejected before it arrives, and each function verifies the
+# caller itself. These three verify more than identity: leave-submit refuses to
+# file for someone else unless the caller is an admin, and leave-decide refuses
+# a caller who is not the named approver. Turning verify_jwt on here would not
+# add a check, it would only break the preflight.
+[functions.leave-submit]
+verify_jwt = false
+
+[functions.leave-decide]
+verify_jwt = false
+
+[functions.leave-cancel]
+verify_jwt = false

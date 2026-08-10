@@ -12,6 +12,7 @@ import {
   Check, // "linked" confirmation
   ChevronLeft,
   ChevronRight,
+  KeyRound, // "create a login"
   Loader2,
   Plus, // "add person"
   Sun, // "Everyone is in" empty state
@@ -21,21 +22,28 @@ import {
   Users as UsersIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { USERNAME_HINT, USERNAME_RE } from '../lib/api'
+import PasswordField from '../components/admin/PasswordField'
 import {
   addDays,
   addNameToRoster,
+  createLoginForStaff,
   createStaffMember,
   deleteStaffMember,
+  fetchLoginAccounts,
   fetchPresence,
   fetchRoster,
   firstName,
+  linkLoginToStaff,
   linkNameToStaff,
   mauritiusToday,
   normaliseName,
   suggestMatch,
+  suggestUsername,
   updateStaffMember,
   workWeek,
   type DayPart,
+  type LoginAccount,
   type PresenceRow,
   type PresenceStatus,
   type StaffMember,
@@ -250,6 +258,11 @@ export default function Report() {
   const [rosterLoading, setRosterLoading] = useState(false)
   const [rosterError, setRosterError] = useState<string | null>(null)
 
+  /** Every login on the system, so the roster can say who signs in as whom. */
+  const [accounts, setAccounts] = useState<LoginAccount[] | null>(null)
+  const [accountsLoading, setAccountsLoading] = useState(false)
+  const [accountsError, setAccountsError] = useState<string | null>(null)
+
   /** Names linked or added during this visit. Presence rows are written by the
    * backend and cannot be rewritten from here, so a row keeps needs_review until
    * the next sync — this map lets the section say so instead of going quiet. */
@@ -308,9 +321,26 @@ export default function Report() {
     }
   }, [])
 
+  // Logins are only readable by an admin (the edge function says so), and only
+  // the roster panel shows them, so this is the same admin-only fetch.
+  const loadAccounts = useCallback(async () => {
+    setAccountsLoading(true)
+    setAccountsError(null)
+    try {
+      setAccounts(await fetchLoginAccounts())
+    } catch (e) {
+      setAccounts(null)
+      setAccountsError(errMessage(e, 'Could not load the list of logins.'))
+    } finally {
+      setAccountsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    if (isAdmin) loadRoster()
-  }, [isAdmin, loadRoster])
+    if (!isAdmin) return
+    loadRoster()
+    loadAccounts()
+  }, [isAdmin, loadRoster, loadAccounts])
 
   // --- roster mutations ---------------------------------------------------
 
@@ -373,6 +403,72 @@ export default function Report() {
     await deleteStaffMember(id)
     setRoster((prev) => prev?.filter((m) => m.id !== id) ?? prev)
   }, [])
+
+  // --- login links --------------------------------------------------------
+  //
+  // Onboarding is fifteen people in one sitting, so every one of these patches
+  // the rows in place instead of re-fetching: the list keeps its order, the
+  // page keeps its scroll position, and the row you just finished stays where
+  // you left it.
+
+  const handleLinkAccount = useCallback(
+    async (staffId: string, userId: string) => {
+      await linkLoginToStaff(userId, staffId)
+      setRoster(
+        (prev) =>
+          prev?.map((m) =>
+            m.id === staffId
+              ? { ...m, profile_id: userId }
+              : // The backend moves a login rather than copying it, so whoever
+                // held it before no longer does.
+                m.profile_id === userId
+                ? { ...m, profile_id: null }
+                : m,
+          ) ?? prev,
+      )
+    },
+    [],
+  )
+
+  const handleUnlinkAccount = useCallback(
+    async (staffId: string, userId: string) => {
+      await linkLoginToStaff(userId, null)
+      setRoster(
+        (prev) =>
+          prev?.map((m) => (m.id === staffId ? { ...m, profile_id: null } : m)) ??
+          prev,
+      )
+    },
+    [],
+  )
+
+  /**
+   * Create a login for someone on the roster. Resolves to the backend's
+   * `linkWarning` when the account was made but could not be attached — the
+   * account exists either way, so that is a warning and never a failure.
+   */
+  const handleCreateLogin = useCallback(
+    async (
+      staffId: string,
+      input: { username: string; password: string; displayName: string },
+    ): Promise<string | null> => {
+      const { account, linkWarning } = await createLoginForStaff({
+        ...input,
+        staffId,
+      })
+      setAccounts((prev) => (prev ? [...prev, account] : [account]))
+      if (!linkWarning) {
+        setRoster(
+          (prev) =>
+            prev?.map((m) =>
+              m.id === staffId ? { ...m, profile_id: account.id } : m,
+            ) ?? prev,
+        )
+      }
+      return linkWarning
+    },
+    [],
+  )
 
   // --- derived ------------------------------------------------------------
 
@@ -540,10 +636,17 @@ export default function Report() {
           roster={roster}
           loading={rosterLoading}
           error={rosterError}
+          accounts={accounts}
+          accountsLoading={accountsLoading}
+          accountsError={accountsError}
           onReload={loadRoster}
+          onReloadAccounts={loadAccounts}
           onSave={handleSaveMember}
           onCreate={handleCreateMember}
           onDelete={handleDeleteMember}
+          onLinkAccount={handleLinkAccount}
+          onUnlinkAccount={handleUnlinkAccount}
+          onCreateLogin={handleCreateLogin}
         />
       )}
     </div>
@@ -1070,18 +1173,35 @@ function RosterPanel({
   roster,
   loading,
   error,
+  accounts,
+  accountsLoading,
+  accountsError,
   onReload,
+  onReloadAccounts,
   onSave,
   onCreate,
   onDelete,
+  onLinkAccount,
+  onUnlinkAccount,
+  onCreateLogin,
 }: {
   roster: StaffMember[] | null
   loading: boolean
   error: string | null
+  accounts: LoginAccount[] | null
+  accountsLoading: boolean
+  accountsError: string | null
   onReload: () => void
+  onReloadAccounts: () => void
   onSave: (id: string, patch: Partial<StaffMemberInput>) => Promise<void>
   onCreate: (input: StaffMemberInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onLinkAccount: (staffId: string, userId: string) => Promise<void>
+  onUnlinkAccount: (staffId: string, userId: string) => Promise<void>
+  onCreateLogin: (
+    staffId: string,
+    input: { username: string; password: string; displayName: string },
+  ) => Promise<string | null>
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -1091,6 +1211,23 @@ function RosterPanel({
     () => (roster ?? []).filter((m) => m.is_manager),
     [roster],
   )
+
+  const accountById = useMemo(
+    () => new Map((accounts ?? []).map((a) => [a.id, a])),
+    [accounts],
+  )
+
+  /**
+   * Logins nobody on the roster has claimed. Offering a taken one would only
+   * earn a 409 from the backend, and a choice that cannot be made is worse
+   * than one that is never shown.
+   */
+  const freeAccounts = useMemo(() => {
+    const taken = new Set(
+      (roster ?? []).map((m) => m.profile_id).filter((id): id is string => !!id),
+    )
+    return (accounts ?? []).filter((a) => !taken.has(a.id))
+  }, [accounts, roster])
 
   async function guard(action: () => Promise<void>) {
     setPanelError(null)
@@ -1108,8 +1245,9 @@ function RosterPanel({
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-gray-900">Staff roster</h2>
           <p className="mt-0.5 text-xs text-gray-500">
-            Departments and managers set here are what future leave approvals
-            route on.
+            Departments and managers set here are what leave approvals route on,
+            and a person can only file their own leave once their login is
+            linked below.
           </p>
         </div>
         <button
@@ -1134,6 +1272,16 @@ function RosterPanel({
               Try again
             </button>
           )}
+        </div>
+      )}
+
+      {accountsError && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={18} className="shrink-0" />
+          <span className="min-w-0 flex-1">{accountsError}</span>
+          <button onClick={onReloadAccounts} className={BTN_QUIET}>
+            Try again
+          </button>
         </div>
       )}
 
@@ -1196,11 +1344,18 @@ function RosterPanel({
                 manager={
                   roster.find((x) => x.id === m.manager_id)?.full_name ?? null
                 }
+                account={m.profile_id ? accountById.get(m.profile_id) ?? null : null}
+                freeAccounts={freeAccounts}
+                accountsReady={accounts !== null}
+                accountsLoading={accountsLoading}
                 onEdit={() => {
                   setEditingId(m.id)
                   setAdding(false)
                 }}
                 onDelete={() => guard(() => onDelete(m.id)).catch(() => {})}
+                onLinkAccount={onLinkAccount}
+                onUnlinkAccount={onUnlinkAccount}
+                onCreateLogin={onCreateLogin}
               />
             ),
           )}
@@ -1213,13 +1368,30 @@ function RosterPanel({
 function MemberRow({
   member,
   manager,
+  account,
+  freeAccounts,
+  accountsReady,
+  accountsLoading,
   onEdit,
   onDelete,
+  onLinkAccount,
+  onUnlinkAccount,
+  onCreateLogin,
 }: {
   member: StaffMember
   manager: string | null
+  account: LoginAccount | null
+  freeAccounts: LoginAccount[]
+  accountsReady: boolean
+  accountsLoading: boolean
   onEdit: () => void
   onDelete: () => void
+  onLinkAccount: (staffId: string, userId: string) => Promise<void>
+  onUnlinkAccount: (staffId: string, userId: string) => Promise<void>
+  onCreateLogin: (
+    staffId: string,
+    input: { username: string; password: string; displayName: string },
+  ) => Promise<string | null>
 }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -1229,66 +1401,328 @@ function MemberRow({
   ].filter(Boolean)
 
   return (
-    <li className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-gray-900">
-            {member.full_name}
-          </span>
-          {member.known_as && (
-            <span className="text-xs text-gray-500">“{member.known_as}”</span>
-          )}
-          {member.is_manager && (
-            <span className="rounded-full bg-jade-50 px-2 py-0.5 text-xs font-medium text-jade-700 dark:text-jade-300">
-              Manager
+    <li className="px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-900">
+              {member.full_name}
             </span>
+            {member.known_as && (
+              <span className="text-xs text-gray-500">“{member.known_as}”</span>
+            )}
+            {member.is_manager && (
+              <span className="rounded-full bg-jade-50 px-2 py-0.5 text-xs font-medium text-jade-700 dark:text-jade-300">
+                Manager
+              </span>
+            )}
+            {!member.active && (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                Inactive
+              </span>
+            )}
+          </div>
+          {detail.length > 0 && (
+            <p className="mt-0.5 text-xs text-gray-500">{detail.join(' · ')}</p>
           )}
-          {!member.active && (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-              Inactive
-            </span>
+          {member.aliases.length > 0 && (
+            <p className="mt-0.5 text-xs text-gray-400">
+              Also written: {member.aliases.join(', ')}
+            </p>
           )}
         </div>
-        {detail.length > 0 && (
-          <p className="mt-0.5 text-xs text-gray-500">{detail.join(' · ')}</p>
-        )}
-        {member.aliases.length > 0 && (
-          <p className="mt-0.5 text-xs text-gray-400">
-            Also written: {member.aliases.join(', ')}
-          </p>
-        )}
+
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button onClick={onEdit} className={BTN_QUIET}>
+            Edit
+          </button>
+          {confirming ? (
+            <>
+              <button
+                onClick={() => {
+                  setConfirming(false)
+                  onDelete()
+                }}
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
+              >
+                Remove {member.full_name}?
+              </button>
+              <button onClick={() => setConfirming(false)} className={BTN_QUIET}>
+                Keep
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              aria-label={`Remove ${member.full_name} from the roster`}
+              className="inline-flex min-h-[38px] w-[38px] items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <button onClick={onEdit} className={BTN_QUIET}>
-          Edit
-        </button>
-        {confirming ? (
-          <>
-            <button
-              onClick={() => {
-                setConfirming(false)
-                onDelete()
-              }}
-              className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
-            >
-              Remove {member.full_name}?
-            </button>
-            <button onClick={() => setConfirming(false)} className={BTN_QUIET}>
-              Keep
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setConfirming(true)}
-            aria-label={`Remove ${member.full_name} from the roster`}
-            className="inline-flex min-h-[38px] w-[38px] items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
-          >
-            <Trash2 size={15} />
-          </button>
-        )}
-      </div>
+      <MemberLogin
+        member={member}
+        account={account}
+        freeAccounts={freeAccounts}
+        accountsReady={accountsReady}
+        accountsLoading={accountsLoading}
+        onLink={onLinkAccount}
+        onUnlink={onUnlinkAccount}
+        onCreate={onCreateLogin}
+      />
     </li>
+  )
+}
+
+/**
+ * The login half of a roster row: who this person signs in as, and — for the
+ * dozen or so who have no account yet — the two ways to give them one.
+ *
+ * Both paths are open on the row rather than behind a dialog, because this is
+ * a sitting-down job: an admin goes down the list once, and a modal per person
+ * would be fifteen open-and-close cycles. Everything is inside a <form>, so
+ * Enter finishes the row without reaching for the mouse.
+ */
+function MemberLogin({
+  member,
+  account,
+  freeAccounts,
+  accountsReady,
+  accountsLoading,
+  onLink,
+  onUnlink,
+  onCreate,
+}: {
+  member: StaffMember
+  account: LoginAccount | null
+  freeAccounts: LoginAccount[]
+  accountsReady: boolean
+  accountsLoading: boolean
+  onLink: (staffId: string, userId: string) => Promise<void>
+  onUnlink: (staffId: string, userId: string) => Promise<void>
+  onCreate: (
+    staffId: string,
+    input: { username: string; password: string; displayName: string },
+  ) => Promise<string | null>
+}) {
+  const pickId = useId()
+  const userId = useId()
+  const passId = useId()
+
+  const [pick, setPick] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [username, setUsername] = useState(() => suggestUsername(member.full_name))
+  const [password, setPassword] = useState('')
+  /** Which request is in flight, so the spinner lands on the button that was
+   * actually pressed — link and create can be on screen at the same time. */
+  const [pending, setPending] = useState<'link' | 'unlink' | 'create' | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const busy = pending !== null
+
+  async function run(kind: 'link' | 'unlink' | 'create', action: () => Promise<void>) {
+    setPending(kind)
+    setErr(null)
+    try {
+      await action()
+    } catch (e) {
+      // 409 from the backend reads as a sentence ("Kavi is already linked to
+      // another login. Unlink that one first.") — show it rather than burying
+      // it under a generic failure.
+      setErr(errMessage(e, 'That did not work. Please try again.'))
+    } finally {
+      setPending(null)
+    }
+  }
+
+  function submitLink(e: FormEvent) {
+    e.preventDefault()
+    if (!pick) return
+    setNotice(null)
+    run('link', () => onLink(member.id, pick))
+  }
+
+  function submitCreate(e: FormEvent) {
+    e.preventDefault()
+    const uname = username.trim().toLowerCase()
+    if (!USERNAME_RE.test(uname)) {
+      setErr(`Username must be ${USERNAME_HINT}`)
+      return
+    }
+    if (password.length < 8) {
+      setErr('Password must be at least 8 characters.')
+      return
+    }
+    setNotice(null)
+    run('create', async () => {
+      const warning = await onCreate(member.id, {
+        username: uname,
+        password,
+        displayName: member.full_name,
+      })
+      // Whatever happened to the link, the account exists — and the password
+      // has served its purpose, so it is dropped here and never shown again.
+      setPassword('')
+      setCreating(false)
+      setNotice(
+        warning ??
+          `Login “${uname}” created. Share the password you copied with ${member.full_name}.`,
+      )
+    })
+  }
+
+  if (accountsLoading && !accountsReady) {
+    return <p className="mt-2 text-xs text-gray-400">Checking logins…</p>
+  }
+  // The logins could not be read at all — the panel says so at the top, and a
+  // per-row repeat of that would be a wall of red.
+  if (!accountsReady) return null
+
+  return (
+    <div className="mt-2">
+      {account ? (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+            <Check size={13} className="shrink-0 text-jade-700 dark:text-jade-300" />
+            Signs in as{' '}
+            <span className="font-mono text-gray-900">{account.username}</span>
+            {!account.active && ' · deactivated'}
+          </span>
+          <button
+            onClick={() => run('unlink', () => onUnlink(member.id, account.id))}
+            disabled={busy}
+            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 disabled:opacity-60"
+          >
+            {pending === 'unlink' && (
+              <Loader2 size={13} className="animate-spin" />
+            )}
+            Unlink
+          </button>
+        </div>
+      ) : (
+        <>
+          <form
+            onSubmit={submitLink}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <label htmlFor={pickId} className="text-xs text-gray-500">
+              Login
+            </label>
+            <select
+              id={pickId}
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+              disabled={busy || freeAccounts.length === 0}
+              className="min-h-[32px] max-w-full rounded-lg border border-gray-300 bg-white px-2 text-xs text-gray-900 outline-none transition focus:border-jade-600 focus:ring-2 focus:ring-jade-600/20 disabled:opacity-60"
+            >
+              <option value="">
+                {freeAccounts.length > 0
+                  ? 'Not linked — choose one…'
+                  : 'Not linked — every login is taken'}
+              </option>
+              {freeAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.username}
+                  {a.displayName && a.displayName !== a.username
+                    ? ` — ${a.displayName}`
+                    : ''}
+                  {a.active ? '' : ' (deactivated)'}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={busy || !pick}
+              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg bg-jade-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-jade-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 disabled:opacity-60"
+            >
+              {pending === 'link' && <Loader2 size={13} className="animate-spin" />}
+              Link
+            </button>
+            <span className="text-xs text-gray-400">or</span>
+            <button
+              type="button"
+              onClick={() => {
+                setCreating((c) => !c)
+                setErr(null)
+              }}
+              aria-expanded={creating}
+              disabled={busy}
+              className="inline-flex min-h-[32px] items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40 disabled:opacity-60"
+            >
+              <KeyRound size={13} />
+              Create a login
+            </button>
+          </form>
+
+          {creating && (
+            <form
+              onSubmit={submitCreate}
+              className="mt-2.5 rounded-lg border border-gray-200 bg-gray-50 p-3"
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label htmlFor={userId} className="block">
+                  <span className="mb-1 block text-xs font-medium text-gray-700">
+                    Username
+                  </span>
+                  <input
+                    id={userId}
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className={INPUT_CLASS}
+                  />
+                  <span className="mt-1 block text-xs text-gray-400">
+                    {USERNAME_HINT}
+                  </span>
+                </label>
+                <div>
+                  <label
+                    htmlFor={passId}
+                    className="mb-1 block text-xs font-medium text-gray-700"
+                  >
+                    Password
+                  </label>
+                  <PasswordField id={passId} value={password} onChange={setPassword} />
+                  <span className="mt-2 block text-xs text-gray-400">
+                    Copy this before you create the account — it is not shown
+                    again afterwards.
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="submit" disabled={busy} className={BTN_PRIMARY}>
+                  {pending === 'create' && (
+                    <Loader2 size={15} className="animate-spin" />
+                  )}
+                  Create login for {firstName(member.full_name)}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreating(false)
+                    setPassword('')
+                    setErr(null)
+                  }}
+                  className={BTN_QUIET}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </>
+      )}
+
+      {notice && <p className="mt-2 text-xs text-gray-500">{notice}</p>}
+      {err && <p className="mt-2 text-xs text-red-700">{err}</p>}
+    </div>
   )
 }
 

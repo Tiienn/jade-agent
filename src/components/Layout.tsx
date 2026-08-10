@@ -12,6 +12,7 @@ import {
   Megaphone,
   Mail,
   FileText,
+  CalendarCheck,
   LayoutDashboard,
   Users as UsersIcon,
   Settings as SettingsIcon,
@@ -41,6 +42,10 @@ const MAIN_LINKS: NavItem[] = [
   { to: '/advert', label: 'Advert', icon: Megaphone, end: true },
   { to: '/email', label: 'Email', icon: Mail, end: true },
   { to: '/report', label: 'Report', icon: FileText, end: true },
+  // Sits next to Report deliberately: Report is who is out, Leave is how they
+  // come to be out. Visible to everyone, not just admins — filing a request is
+  // the one thing every member of staff does here.
+  { to: '/leave', label: 'Leave', icon: CalendarCheck, end: true },
 ]
 
 const ADMIN_LINKS: NavItem[] = [
