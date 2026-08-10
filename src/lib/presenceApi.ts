@@ -17,7 +17,11 @@ import { supabase } from './supabase'
 
 export type PresenceStatus =
   | 'sick'
+  /** Short casual leave — a day or two off, taken at short notice. */
   | 'local_leave'
+  /** Annual leave — planned, and usually weeks rather than days. Deliberately
+   * distinct from `local_leave`: a three-week holiday must not read as a day off. */
+  | 'vacation_leave'
   | 'permission'
   | 'late'
   | 'off_site'

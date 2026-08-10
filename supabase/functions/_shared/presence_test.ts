@@ -272,6 +272,189 @@ Deno.test("16. subject says sick, body says left office — the body wins", () =
 });
 
 // ---------------------------------------------------------------------------
+// Regression fixtures: the five notices the parser originally missed.
+//
+// These are verbatim from production. A backfill over three months of the live
+// mailbox extracted 100 absences correctly and left exactly these five as
+// `status: "other"` with the sentence in `note` and needs_review set — the
+// designed fallback, working, but five real absences a human had to re-read.
+// The clauses are quoted here exactly as they arrived, typos and all:
+// fixture 2 says "willl" and ends in a stray "&" because the original does.
+// Correcting a fixture to match the parser would defeat the whole point of
+// keeping the corpus in the test file.
+//
+// The dates below are the real send dates, so the weekday arithmetic in the
+// assertions is the arithmetic that actually had to be right:
+//   2026-05-11 Mon   2026-05-12 Tue   2026-05-14 Thu
+//   2026-05-18 Mon   2026-05-19 Tue   2026-05-29 Fri   2026-06-01 Mon
+// ---------------------------------------------------------------------------
+
+Deno.test("R1. Osman — 'will resume work on Monday' ends the absence on FRIDAY", () => {
+  // The return date is the first day back, not the last day out. Reading the
+  // 18th as the end marks Osman absent on a Monday he worked; taking the plain
+  // day before gives Sunday the 17th, a day nobody is absent from.
+  const facts = extractPresence(email(
+    "Osman is on sick leave",
+    "Osman is on sick leave and will resume work on Monday 18th May 2026.",
+    "2026-05-11T04:20:00Z", // Monday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Osman");
+  assertEquals(facts[0].status, "sick");
+  assertEquals(facts[0].dayPart, "full");
+  assertEquals(facts[0].startDate, "2026-05-11");
+  assertEquals(facts[0].endDate, "2026-05-15");
+  assertEquals(facts[0].confident, true);
+});
+
+Deno.test("R2. Ashwiny — the 'willl' typo and a truncated trailing '&'", () => {
+  // Verbatim. The tolerance for the typo is deliberate: `wil+ resume` costs
+  // nothing and the alternative is losing a whole week of a real absence to a
+  // doubled letter.
+  const facts = extractPresence(email(
+    "Ashwiny is on sick leave",
+    "Ashwiny is on sick leave and willl resume work on Monday 18th May 2026 &",
+    "2026-05-12T04:05:00Z", // Tuesday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Ashwiny");
+  assertEquals(facts[0].status, "sick");
+  assertEquals(facts[0].startDate, "2026-05-12");
+  assertEquals(facts[0].endDate, "2026-05-15");
+  assertEquals(facts[0].confident, true);
+});
+
+Deno.test("R3. Marie-Claire — 3 weeks' vacation leave effective as from today", () => {
+  // Vacation leave is its own status: filed as local_leave this reads as a
+  // single casual day off instead of the three weeks it is.
+  const facts = extractPresence(email(
+    "Marie-Claire is on vacation leave",
+    "Marie-Claire is on 3 weeks' vacation leave effective as from today.",
+    "2026-05-14T05:41:00Z", // Thursday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Marie-Claire");
+  assertEquals(facts[0].status, "vacation_leave");
+  assertEquals(facts[0].dayPart, "full");
+  assertEquals(facts[0].startDate, "2026-05-14");
+  // Inclusive of the first day: 14 May + 21 days - 1.
+  assertEquals(facts[0].endDate, "2026-06-03");
+  assertEquals(facts[0].confident, true);
+});
+
+Deno.test("R4. Mervyn — an end date AND a return date that corroborate each other", () => {
+  // "until Friday 29th" and "resume on Monday 01st" are two independent
+  // statements of the same end. They agree, so this is MORE trustworthy than a
+  // clause that says it once — the reading stays confident.
+  const facts = extractPresence(email(
+    "Mervyn is on vacation leave",
+    "Mervyn is on vacation leave until Friday 29th May 2026 and will resume work on Monday 01st June 2026.",
+    "2026-05-18T04:11:00Z", // Monday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Mervyn");
+  assertEquals(facts[0].status, "vacation_leave");
+  assertEquals(facts[0].dayPart, "full");
+  assertEquals(facts[0].startDate, "2026-05-18");
+  assertEquals(facts[0].endDate, "2026-05-29");
+  assertEquals(facts[0].confident, true);
+});
+
+Deno.test("R5. Kelly — had to leave office due to an emergency", () => {
+  const facts = extractPresence(email(
+    "Permission - Kelly",
+    "Kelly had to leave office due to an emergency.",
+    "2026-05-19T09:30:00Z", // Tuesday, 13:30 in Mauritius
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Kelly");
+  assertEquals(facts[0].status, "permission");
+  assertEquals(facts[0].dayPart, "partial");
+  assertEquals(facts[0].note, "left office - emergency");
+  assertEquals(facts[0].startDate, "2026-05-19");
+  assertEquals(facts[0].endDate, "2026-05-19");
+  assertEquals(facts[0].confident, true);
+});
+
+// ---------------------------------------------------------------------------
+// The properties those five fixtures depend on, stated on their own.
+// ---------------------------------------------------------------------------
+
+Deno.test("a Monday return means the previous FRIDAY, never the Sunday", () => {
+  // The off-by-one this guards against is silent in both directions: Sunday as
+  // the end writes a weekend absence nobody can be absent from, and the Friday
+  // the person actually missed never reaches the board at all.
+  const facts = extractPresence(email(
+    "Vidhya is on sick leave",
+    "Vidhya is on sick leave and will resume work on Monday 18th May 2026.",
+    "2026-05-13T04:00:00Z", // Wednesday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].startDate, "2026-05-13");
+  assertEquals(facts[0].endDate, "2026-05-15"); // Friday, not Sunday the 17th
+});
+
+Deno.test("an until date and a return date that disagree keep the earlier end", () => {
+  // Wednesday the 20th vs a Monday-the-25th return, which implies Friday the
+  // 22nd. One of the two is a typo and nothing in the sentence says which, so
+  // the shorter absence wins — over-stating one denies a colleague who is at
+  // their desk — and a human is asked to look.
+  const facts = extractPresence(email(
+    "Sandy is on local leave",
+    "Sandy is on local leave until Wednesday 20th May 2026 and will resume work on Monday 25th May 2026.",
+    "2026-05-18T04:00:00Z", // Monday
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].status, "local_leave");
+  assertEquals(facts[0].startDate, "2026-05-18");
+  assertEquals(facts[0].endDate, "2026-05-20");
+  assertEquals(facts[0].confident, false);
+});
+
+Deno.test("an unreadable date inside a recognised clause still yields the absence", () => {
+  // The status is certain, the length is not. Dropping the fact — or dropping
+  // the whole clause to 'other' — would lose a sick colleague over a mangled
+  // date that the reader of the review queue can fix in seconds.
+  const facts = extractPresence(email(
+    "Osman is on sick leave",
+    "Osman is on sick leave and will resume work on 31st Bluesday 2026.",
+    "2026-05-11T04:20:00Z",
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].rawName, "Osman");
+  assertEquals(facts[0].status, "sick");
+  assertEquals(facts[0].startDate, "2026-05-11");
+  assertEquals(facts[0].endDate, "2026-05-11");
+  assertEquals(facts[0].confident, false);
+});
+
+Deno.test("the curly apostrophe Outlook substitutes is still a duration", () => {
+  const facts = extractPresence(email(
+    "Marie-Claire is on vacation leave",
+    "Marie-Claire is on 2 weeks’ vacation leave effective as from today.",
+    "2026-05-14T05:41:00Z",
+  ));
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].status, "vacation_leave");
+  assertEquals(facts[0].startDate, "2026-05-14");
+  assertEquals(facts[0].endDate, "2026-05-27");
+});
+
+Deno.test("adding 'is on sick leave' did not steal the half-day reading", () => {
+  // "is on half sick leave" does not contain "is on sick leave", so the
+  // half-day phrase still wins wherever it is written. This is the one way the
+  // new vocabulary could have quietly turned half days into full ones.
+  const facts = extractPresence(
+    email("Reshad is on half sick leave PM", "Reshad is on half sick leave this afternoon"),
+  );
+  assertEquals(facts.length, 1);
+  assertEquals(facts[0].status, "sick");
+  assertEquals(facts[0].dayPart, "pm");
+  assertEquals(facts[0].startDate, facts[0].endDate);
+  assertEquals(facts[0].confident, true);
+});
+
+// ---------------------------------------------------------------------------
 // The boilerplate must never become a person.
 // ---------------------------------------------------------------------------
 

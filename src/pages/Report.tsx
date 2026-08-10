@@ -58,12 +58,16 @@ interface StatusMeta {
 
 /*
  * Colour carries meaning and nothing else: red for illness, amber for booked
- * leave, jade for "working, just not here", plain grey for the rest. This is a
+ * leave, jade for planned and expected, plain grey for the rest. This is a
  * board people glance at over coffee — it is not an alert dashboard, so most
  * rows are deliberately colourless.
  *
  * Only the jade tint needs a `dark:` variant. The neutral, red and amber ramps
  * are re-mapped under `.dark` in index.css and flip on their own.
+ *
+ * The order entries are written in is the order the day board reads them —
+ * STATUS_ORDER below is derived from these keys, so a new status can only ever
+ * be added in one place.
  */
 const STATUS_META: Record<PresenceStatus, StatusMeta> = {
   sick: {
@@ -77,6 +81,19 @@ const STATUS_META: Record<PresenceStatus, StatusMeta> = {
     short: 'Leave',
     chip: 'border-amber-200 bg-amber-50 text-amber-700',
     cell: 'bg-amber-50 text-amber-700',
+  },
+  // Jade, not amber: annual leave is the most planned absence there is, and
+  // reusing amber would make a three-week holiday glance-identical to a day of
+  // local leave — the one confusion this status exists to prevent. Jade is
+  // already the board's "planned, nothing to do about it" tint, it is calm
+  // rather than alarming, and it stays legible in dark mode (jade-50 is
+  // re-mapped under `.dark`). The label and short form carry the distinction
+  // from off_site, which shares the tint.
+  vacation_leave: {
+    label: 'On vacation',
+    short: 'Vacation',
+    chip: 'border-gray-200 bg-jade-50 text-jade-700 dark:text-jade-300',
+    cell: 'bg-jade-50 text-jade-700 dark:text-jade-300',
   },
   permission: {
     label: 'On permission',
@@ -104,15 +121,58 @@ const STATUS_META: Record<PresenceStatus, StatusMeta> = {
   },
 }
 
-/** Reading order of the groups on the day board. */
-const STATUS_ORDER: PresenceStatus[] = [
-  'sick',
-  'local_leave',
-  'permission',
-  'late',
-  'off_site',
-  'other',
-]
+/**
+ * Reading order of the groups on the day board: the order STATUS_META is
+ * written in. Derived rather than repeated — STATUS_META is exhaustive by its
+ * `Record<PresenceStatus, …>` type, so a status can never be styled but left
+ * out of the ordering (which would drop its whole group off the board).
+ */
+const STATUS_ORDER = Object.keys(STATUS_META) as PresenceStatus[]
+
+/** Lower-cased, punctuation flattened to single spaces: "Arriving late." and
+ * "arriving  late" compare equal. */
+function noteKey(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+/** "on vacation" → "vacation". The status labels are phrases ("Off sick", "On
+ * local leave") while notes are usually written bare, so both sides are
+ * compared with and without the leading preposition. */
+function withoutLeadIn(key: string): string {
+  return key.replace(/^(?:on|off|is|are)\s+/, '')
+}
+
+/**
+ * The note the row should actually show, or null when there is nothing left to
+ * say.
+ *
+ * `note` exists for genuinely extra detail — "left office - emergency", or why
+ * the extractor was unsure — and that must keep showing. But for the simple
+ * absences the extractor fills it with the status in words, so a `late` row
+ * whose note is "arriving late" renders "Arriving late · part day · arriving
+ * late". The note is therefore dropped only when, ignoring case, punctuation,
+ * spacing and a leading "on"/"off", it says exactly what the status label (or
+ * its short form, or the status key itself) already says. Matching is exact on
+ * that normalised form rather than by containment: "sick until Friday"
+ * mentions the label but carries real information, so it stays.
+ */
+function visibleNote(row: PresenceRow): string | null {
+  const note = row.note?.trim()
+  if (!note) return null
+
+  const meta = STATUS_META[row.status]
+  const alreadySaid = new Set(
+    [meta.label, meta.short, row.status].flatMap((text) => {
+      const key = noteKey(text)
+      return [key, withoutLeadIn(key)]
+    }),
+  )
+
+  const key = noteKey(note)
+  return alreadySaid.has(key) || alreadySaid.has(withoutLeadIn(key))
+    ? null
+    : note
+}
 
 /** A full-day absence is the default, so it gets no badge — only the partial
  * days are worth a reader's attention. */
@@ -524,6 +584,9 @@ function StatusGroup({
 function PersonRow({ row }: { row: PresenceRow }) {
   const badge = dayPartLabel(row.day_part)
   const dept = row.staff?.department?.trim()
+  // The group heading above already shows the status label, so a note that only
+  // repeats it would read as a stutter.
+  const note = visibleNote(row)
   return (
     <li className="flex items-start gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
@@ -538,9 +601,7 @@ function PersonRow({ row }: { row: PresenceRow }) {
           )}
         </p>
         {dept && <p className="mt-0.5 truncate text-xs text-gray-500">{dept}</p>}
-        {row.note && (
-          <p className="mt-1 text-xs text-gray-500">{row.note}</p>
-        )}
+        {note && <p className="mt-1 text-xs text-gray-500">{note}</p>}
       </div>
       {badge && (
         <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
@@ -682,6 +743,7 @@ function ReviewRow({
     if (suggestion) setPick((prev) => prev || suggestion.id)
   }, [suggestion])
 
+  const note = visibleNote(row)
   const unmatched = row.staff_id === null
   const reason = unmatched
     ? `“${row.raw_name}” is not on the staff roster yet.`
@@ -718,7 +780,8 @@ function ReviewRow({
           <p className="mt-0.5 text-xs text-gray-500">
             {STATUS_META[row.status].label}
             {dayPartLabel(row.day_part) ? ` · ${dayPartLabel(row.day_part)}` : ''}
-            {row.note ? ` · ${row.note}` : ''}
+            {/* Same line, same label — drop a note that only repeats it. */}
+            {note ? ` · ${note}` : ''}
           </p>
           <p className="mt-1 text-xs text-gray-400">{reason}</p>
         </div>
