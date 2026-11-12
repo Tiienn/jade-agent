@@ -1,3 +1,18 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/api/lease",
+      "destination": "/api/lease"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "functions": {
+    "api/lease.mjs": {
+      "maxDuration": 300,
+      "includeFiles": "server/lease/runtime/**"
+    }
+  }
 }

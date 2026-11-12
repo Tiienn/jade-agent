@@ -20,8 +20,13 @@ import { HttpError } from "./auth.ts";
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 
-/** Delegated scopes. `Mail.Send` is absent on purpose — see createReplyDraft. */
-export const MAIL_SCOPES = "offline_access Mail.ReadWrite User.Read";
+/**
+ * Delegated scopes. Mail.Send is used only by graphNotification.ts for the
+ * fixed-recipient L'Express lead digest. The normal email assistant below
+ * still has no send helper: replies and leave notices remain drafts that a
+ * person reviews in Outlook.
+ */
+export const MAIL_SCOPES = "offline_access Mail.ReadWrite Mail.Send User.Read";
 
 /**
  * The OAuth redirect URI.
@@ -126,6 +131,14 @@ export interface ConnectResult {
   accessToken: string;
   refreshToken: string;
   email: string;
+}
+
+/** Small file attachment accepted by Microsoft Graph's JSON attachment API. */
+export interface DraftAttachment {
+  name: string;
+  contentType: string;
+  /** Raw file bytes. They are encoded only for the request to Microsoft. */
+  bytes: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------
@@ -481,11 +494,10 @@ export async function listMessagesFromSender(
  * text sits where he would have typed it.
  *
  * !! There is no send function in this module, and there must never be one. !!
- * The whole design is that a human presses Send in Outlook. The app does not
- * request the Mail.Send scope (see MAIL_SCOPES), so even a bug or a
- * prompt-injected instruction in an incoming email cannot put a message on the
- * wire — Microsoft would reject the call. Adding a send helper here would
- * quietly remove that guarantee. Don't.
+ * The whole design is that a human presses Send in Outlook. The separate lead
+ * notifier has a narrow send path, but incoming mailbox text never reaches it.
+ * Adding a send helper here would let prompt-injected email text cross that
+ * boundary. Don't.
  */
 export async function createReplyDraft(
   accessToken: string,
@@ -546,21 +558,25 @@ export async function createReplyDraft(
  * There is no send function in this module and there must never be one. A reply
  * draft at least requires a real message someone sent us; THIS function can
  * address anyone, so it would be the obvious place to "just add a send". The
- * app does not hold the Mail.Send scope (see MAIL_SCOPES), so Microsoft refuses
- * to transmit whatever this produces — a human opens Outlook and presses Send.
- * That is the guarantee which lets an automated approval write an all-staff
- * email at all. Adding a send helper would remove it silently.
+ * The separate L'Express notifier holds Mail.Send but this module deliberately
+ * exposes no send helper. A human still opens Outlook and presses Send for
+ * every draft created here.
  */
 export async function createNewDraft(
   accessToken: string,
   to: string[],
   subject: string,
   bodyHtml: string,
+  attachments: DraftAttachment[] = [],
+  cc: string[] = [],
+  bcc: string[] = [],
 ): Promise<string> {
-  const recipients = to
+  const recipientsOf = (addresses: string[]) => addresses
     .map((address) => address.trim())
     .filter((address) => address.length > 0)
     .map((address) => ({ emailAddress: { address } }));
+
+  const recipients = recipientsOf(to);
 
   if (recipients.length === 0) {
     // Graph would happily store a draft addressed to nobody. Refusing here is
@@ -580,6 +596,15 @@ export async function createNewDraft(
       subject,
       body: { contentType: "HTML", content: bodyHtml },
       toRecipients: recipients,
+      ccRecipients: recipientsOf(cc),
+      bccRecipients: recipientsOf(bcc),
+      attachments: attachments.map((attachment) => ({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: attachment.name,
+        contentType: attachment.contentType,
+        isInline: false,
+        contentBytes: bytesToBase64(attachment.bytes),
+      })),
     }),
   });
   if (!res.ok) await throwGraph(res);
@@ -590,4 +615,14 @@ export async function createNewDraft(
     throw new HttpError(502, "Microsoft Graph returned a draft with no id.");
   }
   return draftId;
+}
+
+/** Encode without spreading a multi-megabyte array onto the call stack. */
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }

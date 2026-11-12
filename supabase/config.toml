@@ -31,6 +31,16 @@ verify_jwt = false
 [functions.mail-status]
 verify_jwt = false
 
+# Accepts authenticated multipart uploads. Authentication is verified inside
+# the function so the browser's headerless CORS preflight can reach it.
+[functions.invoice-draft]
+verify_jwt = false
+
+# Admin-configured and also invoked by pg_cron with x-cron-secret. The function
+# verifies either the admin JWT or that database-owned secret itself.
+[functions.lexpress-monitor]
+verify_jwt = false
+
 # Same as every other function here: the platform gate is off and the JWT is
 # verified in-function (requireAdmin), so the CORS preflight can reach it.
 [functions.presence-backfill]
@@ -50,4 +60,12 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.leave-cancel]
+verify_jwt = false
+
+# Files a finished lease plan's DWG and PDF into SharePoint. Same arrangement as
+# everything above: the platform JWT gate is off so the browser's headerless
+# CORS preflight is not rejected before it arrives, and the function verifies
+# the caller itself -- and more than identity, since it refuses to file a plan
+# the caller neither prepared nor administers.
+[functions.lease-publish]
 verify_jwt = false

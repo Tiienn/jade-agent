@@ -220,7 +220,7 @@ export async function fetchPresence(
     .order('raw_name', { ascending: true })
 
   if (error) {
-    throw new Error('Could not load the presence board. Please try again.')
+    throw new Error('Could not load the attendance board. Please try again.')
   }
   return (data ?? []) as unknown as PresenceRow[]
 }

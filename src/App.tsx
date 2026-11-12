@@ -8,10 +8,13 @@ import Search from './pages/Search'
 import Browse from './pages/Browse'
 import Advert from './pages/Advert'
 import Email from './pages/Email'
-import Report from './pages/Report'
+import Invoices from './pages/Invoices'
+import LeasePlans from './pages/LeasePlans'
+import Attendance from './pages/Report'
 import Leave from './pages/Leave'
 import Calendar from './pages/Calendar'
 import ComingSoon from './pages/ComingSoon'
+import Share from './pages/Share'
 import { FEATURE_LINKS } from './lib/featureLinks'
 import Dashboard from './pages/admin/Dashboard'
 import Users from './pages/admin/Users'
@@ -101,14 +104,25 @@ export default function App() {
         }
       />
 
-      {/* Staff presence board. The roster panel inside is admin-gated by the
-          page itself, so the route stays open to every signed-in user. */}
       <Route
-        path="/report"
+        path="/invoices"
         element={
           <ProtectedRoute>
             <Layout>
-              <Report />
+              <Invoices />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Staff attendance board. The roster panel inside is admin-gated by the
+          page itself, so the route stays open to every signed-in user. */}
+      <Route
+        path="/attendance"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Attendance />
             </Layout>
           </ProtectedRoute>
         }
@@ -143,6 +157,10 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route path="/lease-plans" element={<ProtectedRoute><Layout><LeasePlans /></Layout></ProtectedRoute>} />
+
+      <Route path="/share" element={<ProtectedRoute><Layout><Share /></Layout></ProtectedRoute>} />
 
       {FEATURE_LINKS.map((f) => (
         <Route

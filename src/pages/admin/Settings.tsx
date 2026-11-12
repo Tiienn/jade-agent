@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import ConfirmDialog from '../../components/admin/ConfirmDialog'
+import LexpressMonitorCard from '../../components/admin/LexpressMonitorCard'
 
 interface Building {
   id: string
@@ -340,6 +341,8 @@ export default function Settings() {
           )}
         </>
       )}
+
+      <LexpressMonitorCard />
 
       {toDelete && (
         <ConfirmDialog

@@ -1,0 +1,14 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - heading "Jade Agent" [level=1] [ref=e17]
+    - paragraph [ref=e18]: Sign in to search company files
+  - generic [ref=e19]:
+    - generic [ref=e20]:
+      - generic [ref=e21]: Username
+      - textbox "Username" [active] [ref=e22]:
+        - /placeholder: your.username
+    - generic [ref=e23]:
+      - generic [ref=e24]: Password
+      - textbox "Password" [ref=e25]:
+        - /placeholder: ••••••••
+    - button "Sign in" [disabled] [ref=e26]

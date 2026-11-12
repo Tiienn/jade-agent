@@ -1,0 +1,49 @@
+JADE LEASE STUDIO — F18 PILOT (0.2.0)
+Windows 10/11, Intel or AMD 64-bit
+
+1. Extract the entire ZIP. Do not run the EXE from inside the ZIP viewer.
+2. If an older Studio is running, quit it from the tray first.
+   Double-click JadeLeaseStudio.exe and accept the per-user installation.
+   Python, .NET and the CAD engine are included. No CADCraft install is needed.
+3. Click “Find the latest F18 in Jade Agent” and sign into your Jade account.
+   Choose Palm Square, unit F18, locate the drawing, then enter tenant and date.
+4. Create the review set. Review the PDF and use Download DWG / Download PDF.
+   The same saved plan appears in the Windows app.
+5. In Studio, choose a saved review and click “Edit highlight and text”.
+   Drag corner dots or choose Redraw outline and click the corners, then Finish.
+   Choose Red, Blue, Green or Magenta. The outline must enclose F18 only.
+6. Choose New text note, type a note, choose Small/Medium/Large, then click
+   Place text on plan and click
+   its position. Drag it to move it. Click a note to change or delete it.
+   Undo restores the previous edit. Scroll to zoom and drag empty space to pan.
+7. Save DWG and PDF to create a NEW review. Check the exported PDF, including
+   font appearance and the unit boundary. The previous review remains available.
+
+No helper command and no connection code. Chrome or Edge may ask once to allow
+Jade Agent to connect to the local network; this lets it reach your app.
+The existing website may still label the connection “Mac/CADCraft”; Studio
+uses the same protocol, and files are saved on THIS Windows computer.
+
+You can also open a local F18 DWG in Studio and enter the tenant/date there.
+Files are saved to Documents\Jade Lease Plans\<unique review folder>.
+Original DWGs are never overwritten. No files are emailed or uploaded by Studio.
+
+Closing the window leaves Studio running beside the Windows clock. Right-click
+its icon to open it or choose Quit and disconnect. Start-at-sign-in can be
+turned off inside the app. Your computer must be awake and signed in.
+
+PDF preview uses Microsoft Edge WebView2, normally present on Windows 10/11.
+If preview is unavailable, use Open PDF to review in your default PDF viewer.
+
+This first build is unsigned and has not yet been verified on a physical Windows
+PC. Windows may identify it as an unrecognised application. Validate the pilot
+with your own F18 source before sharing it with customers.
+
+Supported now: tenant/date; adjust or redraw the F18 polygon and choose colour;
+add/move/edit/delete up to 20 plain notes; A3 portrait 1:300; save/reopen checks.
+Not included yet: curved outlines, editing original architectural text, other units,
+automatic processing while asleep, cloud queues, or a commercial signed installer.
+Unsupported drawing objects stop export rather than silently changing a plan.
+
+Uninstall: run “Uninstall Jade Lease Studio.cmd” from the installed application
+folder (%LOCALAPPDATA%\Jade Lease Studio\App). Completed plans remain in Documents.

@@ -134,6 +134,14 @@ Copy both.
 3. Search for and tick **`Sites.Read.All`** and **`Files.Read.All`**, then click **Add permissions**.
 4. Click **Grant admin consent for [your organization]** and confirm. *(This button needs a Microsoft 365 admin. If it's greyed out for you, ask your admin to click it.)* When done, both permissions show a green check under "Status".
 
+   **To let Lease plans file finished plans back into SharePoint**, also tick
+   **`Files.ReadWrite.All`** here and grant consent again. This is the only
+   write permission Jade Agent uses, and only one function uses it
+   (`lease-publish`), which writes into its own output folder and asks Microsoft
+   to rename on conflict — it cannot overwrite a drawing. Until this consent is
+   granted, everything else works and *Save to SharePoint* fails with a
+   permission error; plans still generate and download as before.
+
 **2e. Find your SharePoint Site ID.** The easiest way:
 
 1. Go to **https://developer.microsoft.com/graph/graph-explorer** and click **Sign in** (top left), using your work account.

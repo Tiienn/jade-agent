@@ -54,26 +54,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    let revision = 0
+    // Auth callbacks run under the auth client's lock. Defer profile requests
+    // until the callback returns so token refresh cannot deadlock getSession.
+    function syncSession(next: Session | null) {
       if (!active) return
-      const current = data.session
-      setSession(current)
-      if (current) {
-        setProfile(await loadProfile(current.user.id))
-      }
-      if (active) setLoading(false)
-    })
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, next) => {
-      if (!active) return
+      const currentRevision = ++revision
       setSession(next)
-      if (next) {
-        setProfile(await loadProfile(next.user.id))
-      } else {
+      if (!next) {
         setProfile(null)
+        setLoading(false)
+        return
       }
+      window.setTimeout(() => {
+        if (!active || currentRevision !== revision) return
+        void loadProfile(next.user.id).then(nextProfile => {
+          if (!active || currentRevision !== revision) return
+          setProfile(nextProfile)
+          setLoading(false)
+        })
+      }, 0)
+    }
+    void supabase.auth.getSession().then(({ data }) => {
+      if (revision === 0) syncSession(data.session)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      syncSession(next)
     })
 
     return () => {

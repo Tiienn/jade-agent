@@ -1,0 +1,25 @@
+DOT CAD HELPER — AUTOMATIC MAC SETUP
+
+1. Install CADCraft in Applications and Python 3.
+2. Double-click Enable Automatic Helper.command once.
+3. Open https://jade-agent.vercel.app/lease-plans in Chrome.
+4. Allow local-network access if Chrome asks.
+
+Choose the project, enter the unit, locate the latest lease DWG,
+then enter the tenant and date and save a review set.
+No code or Terminal window is needed after setup. The helper starts
+at login and restarts if it stops. Your Mac must be awake and logged in.
+
+Supported drawings have a unique unit label, a title ending in
+"UNIT - TENANT - Lease Agreement", a date and scale on the title layer,
+millimetre units, and an existing red closed outline around the unit.
+Unrecognized drawings stop for manual review. The helper does not redraw
+missing outlines or guess title blocks. Review every PDF and DWG.
+
+Files stay in Documents / Jade Lease Plans. Source files are not overwritten.
+Automatic pairing is restricted to the two Jade Agent website addresses and
+localhost:5173 for development. No Microsoft credentials go to the helper.
+
+To stop automatic access, double-click Disable Automatic Helper.command.
+Installed files: Applications / Dot CAD Helper in your home folder.
+Logs: Library / Logs / Dot CAD Helper in your home folder.

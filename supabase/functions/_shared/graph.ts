@@ -385,3 +385,175 @@ function mapItem(it: any): FileResult {
     thumbnailUrl: it.thumbnails?.[0]?.small?.url ?? undefined,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Writing (lease plans)
+// ---------------------------------------------------------------------------
+//
+// Everything above this line reads. These two functions are the only writes
+// this project makes to SharePoint, they are used by exactly one caller
+// (lease-publish), and neither can replace an existing file: uploads ask Graph
+// to RENAME on conflict rather than overwrite. Note that they need an
+// application permission the read path does not -- Files.ReadWrite.All, see
+// SETUP.md step 2d -- and will fail with a 403 until that consent is granted.
+
+/** Graph's ceiling for a single PUT. Anything larger needs an upload session. */
+const SIMPLE_UPLOAD_MAX = 4 * 1024 * 1024;
+// Session chunks must be a multiple of 320 KiB. 2.5 MiB keeps a 24 MB DWG to
+// ten requests while staying well inside the Deno function's memory budget.
+const UPLOAD_CHUNK = 8 * 320 * 1024;
+
+function encodePath(path: string): string {
+  return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+/**
+ * Create every missing folder along a drive-relative path, returning the leaf
+ * item. Walks down one level at a time because Graph has no mkdir -p: creating
+ * a child under a parent that does not exist yet 404s instead of creating the
+ * parent. A 409 means a concurrent caller won the race, which is a success.
+ */
+export async function ensureFolderPath(
+  driveId: string,
+  path: string,
+): Promise<any> {
+  const token = await getGraphToken();
+  const parts = segments(path);
+  if (!parts.length) {
+    throw new HttpError(500, "No SharePoint destination folder is configured.");
+  }
+  let walked = "";
+  let item: any = null;
+  for (const part of parts) {
+    const next = walked ? `${walked}/${part}` : part;
+    item = await getFolderByPath(driveId, next);
+    if (!item) {
+      const parent = walked ? `root:/${encodePath(walked)}:` : "root";
+      const res = await fetch(`${GRAPH}/drives/${driveId}/${parent}/children`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: part,
+          folder: {},
+          "@microsoft.graph.conflictBehavior": "fail",
+        }),
+      });
+      if (res.status === 409) {
+        item = await getFolderByPath(driveId, next);
+        if (!item) await throwGraph(res);
+      } else if (!res.ok) {
+        await throwGraph(res);
+      } else {
+        item = await res.json();
+      }
+    }
+    if (!item.folder) {
+      throw new HttpError(
+        409,
+        `"${next}" already exists in SharePoint and is not a folder.`,
+      );
+    }
+    walked = next;
+  }
+  return item;
+}
+
+export interface UploadedItem {
+  id: string;
+  name: string;
+  webUrl: string | null;
+  size: number;
+}
+
+/**
+ * Upload bytes into `folderItemId` as a NEW item. Graph is asked to rename on
+ * conflict, so filing the same plan twice leaves two visible files rather than
+ * destroying the first; the name Microsoft actually used comes back in `name`.
+ */
+export async function uploadFile(
+  driveId: string,
+  folderItemId: string,
+  name: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<UploadedItem> {
+  const token = await getGraphToken();
+  const target =
+    `${GRAPH}/drives/${driveId}/items/${folderItemId}:/${encodeURIComponent(name)}:`;
+
+  if (bytes.byteLength <= SIMPLE_UPLOAD_MAX) {
+    const res = await fetch(
+      `${target}/content?@microsoft.graph.conflictBehavior=rename`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": contentType,
+        },
+        body: bytes,
+      },
+    );
+    if (!res.ok) await throwGraph(res);
+    return asUploaded(await res.json(), bytes.byteLength);
+  }
+
+  const opened = await fetch(`${target}/createUploadSession`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      item: { "@microsoft.graph.conflictBehavior": "rename" },
+    }),
+  });
+  if (!opened.ok) await throwGraph(opened);
+  const uploadUrl = (await opened.json()).uploadUrl as string | undefined;
+  if (!uploadUrl) {
+    throw new HttpError(502, "Microsoft did not return an upload URL.");
+  }
+
+  try {
+    for (let start = 0; start < bytes.byteLength; start += UPLOAD_CHUNK) {
+      const end = Math.min(start + UPLOAD_CHUNK, bytes.byteLength);
+      // The session URL is itself pre-authorised, and Graph REJECTS these PUTs
+      // if the app token is sent with them, so they carry no Authorization.
+      const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Range": `bytes ${start}-${end - 1}/${bytes.byteLength}`,
+        },
+        body: bytes.subarray(start, end),
+      });
+      if (res.status === 200 || res.status === 201) {
+        return asUploaded(await res.json(), bytes.byteLength);
+      }
+      if (!res.ok) await throwGraph(res);
+      await safeText(res); // 202: chunk accepted, drain and continue
+    }
+  } catch (e) {
+    // Abandoned sessions hold a placeholder in the folder for days otherwise.
+    await fetch(uploadUrl, { method: "DELETE" }).catch(() => {});
+    throw e;
+  }
+  await fetch(uploadUrl, { method: "DELETE" }).catch(() => {});
+  throw new HttpError(
+    502,
+    "The upload finished without Microsoft confirming the file.",
+  );
+}
+
+function asUploaded(json: any, fallbackSize: number): UploadedItem {
+  if (!json?.id) {
+    throw new HttpError(502, "Microsoft did not confirm the uploaded file.");
+  }
+  return {
+    id: String(json.id),
+    name: String(json.name ?? "file"),
+    webUrl: typeof json.webUrl === "string" ? json.webUrl : null,
+    size: Number(json.size ?? fallbackSize),
+  };
+}

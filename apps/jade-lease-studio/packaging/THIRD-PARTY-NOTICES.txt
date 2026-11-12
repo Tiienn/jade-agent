@@ -1,0 +1,24 @@
+Jade Lease Studio 0.2.0 — Windows F18 pilot
+
+Jade Lease Studio uses the CADCraft 0.7.0 engine by the ArtCraft Team and CADCraft
+contributors. This is an independent lease-plan application, not Autodesk
+AutoCAD and not an official ArtCraft product.
+
+CADCraft source: https://github.com/storytold/cadcraft/tree/v0.7.0
+CADCraft is available under MIT OR Apache-2.0. The engine directory includes
+both licence texts, upstream NOTICE, and the font licence notices supplied
+with the original Windows release. No proprietary AutoCAD code is included.
+
+Python 3.13.12 is supplied unmodified from python.org's Windows embeddable
+package. See runtime/LICENSE.txt for Python and bundled library licences.
+
+.NET Windows Desktop 10 is distributed self-contained under its applicable
+licences. See the Microsoft runtime licence and notice files in licenses/.
+Microsoft Edge WebView2 SDK is used for PDF preview and requires the separately
+installed Microsoft Edge WebView2 Runtime. No runtime is silently downloaded.
+SDK licence and notices are included in licenses/.
+
+Jade Lease Studio's CAD bridge and validator are shipped as readable Python
+source in worker/. The app keeps originals and creates separate review files.
+This pilot only supports Palm Square F18 using the tested title/date and
+supported closed boundary conventions. Review exported plans before using them.

@@ -1,0 +1,26 @@
+# Vite builds from source; keep local credentials and tooling out of uploads.
+.env
+.env.*
+!.env.example
+.claude/
+.codex/
+supabase/.temp/
+supabase/functions/node_modules/
+node_modules/
+dist/
+output/
+.playwright-cli/
+*.tsbuildinfo
+
+# Native desktop app sources are not inputs to the Vite website.
+
+# Only worker/UI sources are used to prepare the web runtime.
+!apps/jade-lease-studio/
+!apps/jade-lease-studio/worker/
+!apps/jade-lease-studio/worker/*.py
+!apps/jade-lease-studio/ui/
+!apps/jade-lease-studio/ui/*
+apps/jade-lease-studio/artifacts/
+apps/jade-lease-studio/.cache/
+apps/jade-lease-studio/bin/
+apps/jade-lease-studio/obj/

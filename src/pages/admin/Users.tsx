@@ -237,7 +237,16 @@ function UserRow({
           </p>
         </div>
 
-        {isAdmin ? (
+        {isAdmin && isSelf ? (
+          <button
+            onClick={onReset}
+            disabled={busy}
+            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+          >
+            <KeyRound size={15} />
+            Reset my password
+          </button>
+        ) : isAdmin ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
             <Lock size={13} />
             Admin accounts are protected

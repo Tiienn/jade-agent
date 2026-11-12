@@ -2,8 +2,10 @@
 
 The agent reads your mailbox 4× a day (09:00, 12:00, 15:00, 17:00 Mauritius
 time), separates what needs a reply from the noise, and writes draft replies in
-your style. **It cannot send email.** That is not a policy — the app never
-requests permission to send, so there is no code path that could.
+your style. Those mailbox replies still cannot send themselves. The one narrow
+exception is the L'Express Property monitor: it sends a deterministic new-lead
+digest to `charles.li@jadegroup.mu`. Portal text is HTML-escaped, never passed
+to an AI model, and cannot choose or change the recipient.
 
 ---
 
@@ -33,6 +35,7 @@ Configured on the `Jade File Finder` app registration
 | Setting | Value |
 | --- | --- |
 | `Mail.ReadWrite` | **Delegated** — "read and write access to *user* mail" |
+| `Mail.Send` | **Delegated** — used only for the fixed-recipient L'Express lead digest |
 | `offline_access` | Delegated — lets the scheduled job keep working without you re-signing in |
 | Redirect URI (Web) | `https://nfnpwkkcafaumxrqjdai.supabase.co/functions/v1/mail-callback` |
 
@@ -67,6 +70,10 @@ supabase secrets set OPENAI_API_KEY=PASTE_THE_REAL_KEY_HERE
 Expect **$5–15/month** at your volume. To change model:
 `supabase secrets set OPENAI_MODEL=gpt-4o` (that is the default).
 
+The **Invoices** page reuses this same key. It reads up to four PDF invoices
+with the Responses API and defaults to `gpt-6-astra`; set
+`OPENAI_INVOICE_MODEL` only if you intentionally need a different model.
+
 ---
 
 ## 3. Connect your mailbox
@@ -89,10 +96,44 @@ To disconnect at any point, either use the app or revoke it yourself at
 - **Refresh token:** in a table with row-level security enabled and *no access
   policies at all*, so no browser session can read it — only the server.
 - Drafts are created in your Outlook Drafts folder and listed in the app.
+- Invoice PDFs are not stored by Jade Agent. They exist only for the request,
+  are analysed with OpenAI storage disabled, and are attached to the Outlook
+  draft before the request ends.
+- When you change an invoice message before creating its draft, Jade keeps the
+  original and edited wording as a private, per-user style example. Browser
+  sessions cannot read this history; the invoice function uses it only to
+  match future invoice-email wording and never as a source of invoice facts.
 
-## What it will never do
+## What the mailbox assistant will never do
 
-- Send an email — the permission is not requested
+- Send a reply or leave notice — those always remain Outlook drafts
 - Delete anything
 - Read anyone else's mailbox — Microsoft prevents it; it signs in as you
 - Reply on its own — every draft waits for you to press send
+
+## Invoice drafts
+
+Open **Jade Agent → Invoices**, choose up to four PDF invoices, and select
+**Prepare email**. Jade extracts the visible client and invoice details, warns
+when the files appear to belong to different clients or contain no email
+address, and lets you edit the To, Cc, Bcc, subject, and message fields. Multiple
+addresses can be entered with commas between them. **Create draft**
+then writes one Outlook draft with the original PDFs attached. Each PDF must be
+under 2.9 MB and all selected files together must be under 8 MB. Outlook on the
+web is fully supported; no desktop Outlook app is required.
+
+## L'Express Property monitor
+
+An admin configures this under **Admin → Settings → L'Express enquiry monitor**.
+The portal email and password are encrypted in Supabase Vault and never returned
+to the browser. Saving the login validates it, baselines all existing enquiries,
+and enables the hourly 08:00–18:00 Mauritius schedule. Only enquiries first seen
+after that baseline are emailed.
+
+Notifications are created as Outlook drafts internally, sent immediately, and
+then looked up again by immutable Microsoft message id. The Settings card says
+**Confirmed in Sent Items** only after that lookup succeeds; Microsoft's initial
+acceptance response alone is shown as pending rather than confirmed delivery.
+
+Reconnect Outlook once after deploying this feature so Microsoft can show and
+record the added delegated `Mail.Send` consent.

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'"><title>Edit lease plan</title><link rel="stylesheet" href="editor.css"></head>
+<body>
+<header><div><strong id="planTitle">Edit your lease plan</strong><span id="planSubtitle">New review copy</span></div><div class="actions"><button id="cancel">Cancel</button><button id="save" class="primary">Save DWG and PDF</button></div></header>
+<main><aside>
+<h2>Unit highlight</h2><p>Drag the corner dots to adjust the boundary.</p>
+<label for="color">Colour</label><select id="color"><option>Red</option><option>Blue</option><option>Green</option><option>Magenta</option></select>
+<button id="redraw">Redraw outline</button><button id="finish" hidden>Finish outline</button><button id="reset">Restore starting outline</button>
+<h2>Text</h2><button id="newNote">New text note</button><label id="textLabel" for="text">New note</label><input id="text" maxlength="120" placeholder="e.g. Proposed entrance"><label for="size">Printed size</label><select id="size"><option value="2">Small · 2 mm</option><option value="3" selected>Medium · 3 mm</option><option value="4">Large · 4 mm</option></select>
+<button id="add">Place text on plan</button><button id="delete" disabled>Delete selected note</button><p>Click a note to edit it. Drag to move it.</p><div id="notes" aria-label="Text notes"></div>
+<div class="bottom"><button id="undo" disabled>Undo last edit</button><small>Your original drawing and previous review stay unchanged.</small></div>
+</aside><section><nav><button id="unit">Zoom to unit</button><button id="fit">Show whole plan</button><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomOut" aria-label="Zoom out">−</button><span>Scroll to zoom · Drag empty space to pan</span></nav><div id="canvasWrap"><canvas id="canvas" aria-label="Drawing editor"></canvas><div id="loading">Opening your plan…</div></div><footer id="status" role="status">Select a corner or add a note.</footer></section></main>
+<script src="editor.js"></script></body></html>

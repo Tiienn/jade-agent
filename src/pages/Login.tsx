@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { adminUsers } from '../lib/api'
@@ -8,6 +8,11 @@ import Logo from '../components/Logo'
 export default function Login() {
   const { session, loading: authLoading, login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  // ProtectedRoute remembers the page requested before sign-in (e.g. a QR scan).
+  const from: unknown = location.state?.from
+  const redirectTo = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//')
+    ? from : '/'
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -36,7 +41,7 @@ export default function Login() {
   }, [navigate])
 
   if (!authLoading && session) {
-    return <Navigate to="/" replace />
+    return <Navigate to={redirectTo} replace />
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -50,7 +55,7 @@ export default function Login() {
     setSubmitting(true)
     try {
       await login(username, password)
-      navigate('/', { replace: true })
+      navigate(redirectTo, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign in failed.')
     } finally {

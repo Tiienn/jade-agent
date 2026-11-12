@@ -389,7 +389,7 @@ export default function Leave() {
         result.presenceRowsRemoved > 0
           ? `Request cancelled. ${result.presenceRowsRemoved} day${
               result.presenceRowsRemoved === 1 ? '' : 's'
-            } removed from the presence board.`
+            } removed from the attendance board.`
           : 'Request cancelled.',
       )
     },
@@ -440,10 +440,10 @@ export default function Leave() {
           Ask for time off, and see what has been decided. Approved leave shows
           up on the{' '}
           <Link
-            to="/report"
+            to="/attendance"
             className="font-medium text-jade-700 underline-offset-2 hover:underline dark:text-jade-300"
           >
-            presence board
+            attendance board
           </Link>
           .
         </p>
@@ -592,16 +592,16 @@ function NotOnRoster({
         </p>
         <p className="mt-1 text-sm text-gray-500">
           {inactive
-            ? 'Leave is filed against an active person on the staff roster. An administrator can reactivate your record on the presence board.'
+            ? 'Leave is filed against an active person on the staff roster. An administrator can reactivate your record on the attendance board.'
             : 'Leave requests are routed to your department manager, and that comes from the staff roster — so your login has to be linked to your name there first. An administrator can do it in a couple of clicks.'}
         </p>
         <p className="mt-3 text-sm text-gray-500">
           Nothing is lost in the meantime: absences already announced by email
-          still appear on the presence board.
+          still appear on the attendance board.
         </p>
         {isAdmin && (
           <Link
-            to="/report"
+            to="/attendance"
             className={`mt-4 ${BTN_QUIET}`}
           >
             Open the staff roster
@@ -718,7 +718,7 @@ function RequestForm({
           <h2 className="text-sm font-semibold text-gray-900">Request leave</h2>
           <p className="mt-0.5 text-xs text-gray-500">
             It goes to your department manager to approve. Nothing reaches the
-            presence board until they do.
+            attendance board until they do.
           </p>
         </div>
 
@@ -1310,8 +1310,8 @@ function OutcomeNotice({
               {result.rowsWritten > 0
                 ? `${result.rowsWritten} day${
                     result.rowsWritten === 1 ? '' : 's'
-                  } added to the presence board.`
-                : 'Nothing was added to the presence board — the request covered no working days.'}
+                  } added to the attendance board.`
+                : 'Nothing was added to the attendance board — the request covered no working days.'}
             </p>
           )}
           {drafted.length > 0 ? (

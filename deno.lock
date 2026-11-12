@@ -1039,12 +1039,17 @@
         "npm:@tailwindcss/vite@4",
         "npm:@types/react-dom@^18.3.0",
         "npm:@types/react@^18.3.11",
+        "npm:@vercel/functions@^3.10.1",
+        "npm:@vercel/sandbox@^3.8.0",
         "npm:@vitejs/plugin-react@^4.3.2",
         "npm:lucide-react@0.446",
+        "npm:pdfjs-dist@^6.4.299",
+        "npm:qrcode.react@4.2.0",
         "npm:react-dom@^18.3.1",
         "npm:react-router-dom@^6.26.0",
         "npm:react@^18.3.1",
         "npm:tailwindcss@4",
+        "npm:tus-js-client@4.3.1",
         "npm:typescript@^5.6.2",
         "npm:vite@^5.4.8"
       ]

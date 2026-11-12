@@ -20,3 +20,13 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .vercel
+
+# Local CAD helper runtime
+__pycache__/
+*.pyc
+
+# Windows Studio build outputs and bundled runtimes
+apps/jade-lease-studio/bin/
+apps/jade-lease-studio/obj/
+apps/jade-lease-studio/.cache/
+apps/jade-lease-studio/artifacts/

@@ -243,7 +243,7 @@ type View = 'day' | 'week' | 'roster'
 // Page
 // ---------------------------------------------------------------------------
 
-export default function Report() {
+export default function Attendance() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
 
@@ -296,7 +296,7 @@ export default function Report() {
       setRows(await fetchPresence(rangeStart, rangeEnd))
     } catch (e) {
       setRows(null)
-      setError(errMessage(e, 'Could not load the presence board.'))
+      setError(errMessage(e, 'Could not load the attendance board.'))
     } finally {
       setLoading(false)
     }
@@ -503,7 +503,7 @@ export default function Report() {
       {/* Header */}
       <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-gray-900">Who is out</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Attendance</h1>
           <p className="mt-0.5 text-sm text-gray-500">
             {boardDate(date, LONG_DATE)}
             {date === today && ' · today in Mauritius'}
@@ -549,7 +549,7 @@ export default function Report() {
       {/* Views */}
       <div
         role="tablist"
-        aria-label="Presence views"
+        aria-label="Attendance views"
         className="mt-4 flex gap-2 overflow-x-auto pb-1"
       >
         {tabs.map((t) => {

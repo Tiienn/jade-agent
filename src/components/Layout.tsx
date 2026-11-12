@@ -11,7 +11,10 @@ import {
   FolderOpen,
   Megaphone,
   Mail,
-  FileText,
+  ReceiptText,
+  Share2,
+  FilePenLine,
+  UserCheck,
   CalendarCheck,
   CalendarDays,
   LayoutDashboard,
@@ -40,14 +43,17 @@ interface NavItem {
 const MAIN_LINKS: NavItem[] = [
   { to: '/', label: 'Search', icon: SearchIcon, end: true },
   { to: '/browse', label: 'Browse', icon: FolderOpen, end: true },
+  { to: '/share', label: 'Share', icon: Share2, end: true },
+  { to: '/lease-plans', label: 'Lease plans', icon: FilePenLine, end: true },
   { to: '/advert', label: 'Advert', icon: Megaphone, end: true },
   { to: '/email', label: 'Email', icon: Mail, end: true },
-  { to: '/report', label: 'Report', icon: FileText, end: true },
-  // Sits next to Report deliberately: Report is who is out, Leave is how they
+  { to: '/invoices', label: 'Invoices', icon: ReceiptText, end: true },
+  { to: '/attendance', label: 'Attendance', icon: UserCheck, end: true },
+  // Sits next to Attendance deliberately: Attendance is who is out, Leave is how they
   // come to be out. Visible to everyone, not just admins — filing a request is
   // the one thing every member of staff does here.
   { to: '/leave', label: 'Leave', icon: CalendarCheck, end: true },
-  // After Leave, closing the same loop: Report is who is out, Leave is how they
+  // After Leave, closing the same loop: Attendance is who is out, Leave is how they
   // come to be out, Calendar is what everyone is doing — and it is the one page
   // that reads the other two, warning about absences as a meeting is arranged.
   { to: '/calendar', label: 'Calendar', icon: CalendarDays, end: true },

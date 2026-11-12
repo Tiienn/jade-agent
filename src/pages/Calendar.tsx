@@ -52,6 +52,7 @@ import {
   StickyNote, // the note marker on a grid cell
   TriangleAlert, // absence clash
   UserCog, // "your login is not on the roster"
+  UserCheck,
   Users as UsersIcon,
   X,
 } from 'lucide-react'
@@ -387,6 +388,19 @@ export default function Calendar() {
     return map
   }, [absences, memberById])
 
+  /** Active staff with no recorded absence on the selected day. Presence is
+   * absence-based, so the UI says exactly how this list is derived. */
+  const hereOnSelectedDate = useMemo(() => {
+    if (!roster) return null
+    return roster
+      .filter(
+        (member) =>
+          member.active && !(absences[member.id] ?? []).includes(date),
+      )
+      .map(memberName)
+      .sort((a, b) => a.localeCompare(b))
+  }, [roster, absences, date])
+
   /** The roster row this login is, or null — most of the roster has no login
    * and some logins are on nobody. An inactive row cannot act, exactly as on
    * the leave page. */
@@ -516,8 +530,7 @@ export default function Calendar() {
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-gray-900">Calendar</h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            {headingText}
-            {view !== 'month' && date === today && ' · today in Mauritius'}
+            Meetings, staff attendance and notes in one place.
           </p>
         </div>
 
@@ -588,6 +601,20 @@ export default function Calendar() {
             </button>
           )
         })}
+      </div>
+
+      {/* The period is the calendar's visual anchor. Keeping it immediately
+          above the calendar makes month changes unmistakable. */}
+      <div className="mt-4 border-l-4 border-jade-600 pl-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-jade-700 dark:text-jade-300">
+          {view} view
+        </p>
+        <h2 className="mt-1 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl">
+          {headingText}
+        </h2>
+        {view !== 'month' && date === today && (
+          <p className="mt-1 text-sm text-gray-500">Today in Mauritius</p>
+        )}
       </div>
 
       {error && (
@@ -667,6 +694,7 @@ export default function Calendar() {
           events={eventsByDate.get(date) ?? []}
           notes={notesByDate.get(date) ?? []}
           away={awayByDate.get(date) ?? []}
+          here={hereOnSelectedDate}
           profileId={profile?.id ?? null}
           myStaffId={myStaffId}
           isAdmin={isAdmin}
@@ -714,7 +742,7 @@ function NotOnRoster({
           <>
             {' '}
             <Link
-              to="/report"
+              to="/attendance"
               className="font-medium text-jade-700 underline-offset-2 hover:underline dark:text-jade-300"
             >
               Open the staff roster
@@ -791,7 +819,7 @@ function MonthView({
                   cell={cell}
                   selected={cell.date === selected}
                   events={eventsByDate.get(cell.date) ?? []}
-                  noteCount={notesByDate.get(cell.date)?.length ?? 0}
+                  notes={notesByDate.get(cell.date) ?? []}
                   away={awayByDate.get(cell.date) ?? []}
                   onPick={onPickDay}
                 />
@@ -817,17 +845,18 @@ function MonthCellButton({
   cell,
   selected,
   events,
-  noteCount,
+  notes,
   away,
   onPick,
 }: {
   cell: MonthCell
   selected: boolean
   events: CalendarEvent[]
-  noteCount: number
+  notes: CalendarNote[]
   away: string[]
   onPick: (iso: string) => void
 }) {
+  const noteCount = notes.length
   const shown = events.slice(0, CHIPS_PER_CELL)
   const hidden = events.length - shown.length
 
@@ -888,6 +917,16 @@ function MonthCellButton({
         <span className="px-1 text-[10px] text-gray-500">+{hidden} more</span>
       )}
 
+      {notes.length > 0 && (
+        <span
+          title={notes[0].body}
+          className="flex items-start gap-1 rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-700"
+        >
+          <StickyNote size={10} className="mt-0.5 shrink-0" />
+          <span className="truncate">{notes[0].body}</span>
+        </span>
+      )}
+
       {away.length > 0 && (
         <span className="mt-auto flex items-start gap-1 truncate px-1 pt-0.5 text-[10px] text-amber-700">
           <TriangleAlert size={10} className="mt-[3px] shrink-0" />
@@ -928,7 +967,8 @@ function WeekView({
     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-7 sm:gap-2">
       {cells.map((cell) => {
         const events = eventsByDate.get(cell.date) ?? []
-        const noteCount = notesByDate.get(cell.date)?.length ?? 0
+        const dayNotes = notesByDate.get(cell.date) ?? []
+        const noteCount = dayNotes.length
         const away = awayByDate.get(cell.date) ?? []
         return (
           <section
@@ -993,7 +1033,26 @@ function WeekView({
               ))}
             </ul>
 
-            {events.length === 0 && away.length === 0 && (
+            {dayNotes.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onPickDay(cell.date)}
+                className="mt-1.5 flex items-start gap-1 rounded-lg bg-amber-50 px-1.5 py-1 text-left text-[11px] text-amber-700 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-jade-600/40"
+                aria-label={`Open ${noteCount === 1 ? 'note' : `${noteCount} notes`} for ${dayText(cell.date, LONG_DATE)}`}
+              >
+                <StickyNote size={11} className="mt-0.5 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block line-clamp-2">{dayNotes[0].body}</span>
+                  {noteCount > 1 && (
+                    <span className="mt-0.5 block font-medium">
+                      +{noteCount - 1} more
+                    </span>
+                  )}
+                </span>
+              </button>
+            )}
+
+            {events.length === 0 && away.length === 0 && dayNotes.length === 0 && (
               <p className="mt-1.5 px-1 text-[11px] text-gray-400">Clear</p>
             )}
           </section>
@@ -1013,6 +1072,7 @@ function DayView({
   events,
   notes,
   away,
+  here,
   profileId,
   myStaffId,
   isAdmin,
@@ -1030,6 +1090,7 @@ function DayView({
   events: CalendarEvent[]
   notes: CalendarNote[]
   away: string[]
+  here: string[] | null
   profileId: string | null
   myStaffId: string | null
   isAdmin: boolean
@@ -1048,17 +1109,7 @@ function DayView({
 }) {
   return (
     <div className="mt-4 space-y-4">
-      {away.length > 0 && (
-        <section className="flex flex-wrap items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
-          <p className="min-w-0 flex-1">
-            {away.length === 1
-              ? `${away[0]} is recorded away`
-              : `${away.join(', ')} are recorded away`}{' '}
-            {date === today ? 'today' : `on ${shortDate(date)}`}.
-          </p>
-        </section>
-      )}
+      {here && <AttendanceOverview date={date} today={today} here={here} away={away} />}
 
       <section className="rounded-xl border border-gray-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
@@ -1120,6 +1171,68 @@ function DayView({
         onDelete={onDeleteNote}
       />
     </div>
+  )
+}
+
+function AttendanceOverview({
+  date,
+  today,
+  here,
+  away,
+}: {
+  date: string
+  today: string
+  here: string[]
+  away: string[]
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 px-4 py-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <UserCheck size={17} className="text-jade-700 dark:text-jade-300" />
+            Staff attendance
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            {date === today ? 'Today' : shortDate(date)} · based on active staff with no absence recorded
+          </p>
+        </div>
+        <span className="rounded-full bg-jade-50 px-2.5 py-1 text-xs font-semibold text-jade-700 dark:text-jade-300">
+          {here.length} here
+        </span>
+      </div>
+
+      <div className="grid gap-0 md:grid-cols-[minmax(0,2fr)_minmax(14rem,1fr)]">
+        <div className="px-4 py-3 md:border-r md:border-gray-200">
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Here</p>
+          {here.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {here.map((name, index) => (
+                <span
+                  key={`${name}-${index}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-jade-200 bg-jade-50 px-2.5 py-1 text-xs font-medium text-jade-700 dark:text-jade-300"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-jade-600" aria-hidden="true" />
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-gray-500">No active staff are marked here.</p>
+          )}
+        </div>
+
+        <div className="border-t border-gray-200 bg-amber-50 px-4 py-3 md:border-t-0">
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700">
+            <TriangleAlert size={13} />
+            Away · {away.length}
+          </p>
+          <p className="mt-2 text-sm text-amber-700">
+            {away.length > 0 ? away.join(', ') : 'Nobody is recorded away.'}
+          </p>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -1862,7 +1975,7 @@ function EventEditor({
           </h2>
           <p className="mt-0.5 text-xs text-gray-500">
             Times are Mauritius time. Whoever you invite is checked against the
-            presence board as you go.
+            attendance board as you go.
           </p>
         </div>
         <button
@@ -2092,7 +2205,7 @@ function EventEditor({
         {hasAttendees && absencesError && (
           <p className="mt-3 text-xs text-gray-500">
             {absencesError} You can still save — nobody has been checked against
-            the presence board.
+            the attendance board.
           </p>
         )}
 
