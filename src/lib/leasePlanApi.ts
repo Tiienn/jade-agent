@@ -88,6 +88,10 @@ export async function leaseCloud<T>(action: string, body?: unknown): Promise<T> 
 export async function listLeaseJobs(): Promise<LeaseJob[]> {
   return (await leaseCloud<{jobs: LeaseJob[]}>('list')).jobs
 }
+/** Permanently delete one of your own finished or failed plans that is not filed. */
+export async function deleteLeasePlan(id: string): Promise<void> {
+  await leaseCloud('delete', { id })
+}
 export async function leaseLibrary(): Promise<LeaseLibraryPlan[]> {
   return (await leaseCloud<{plans: LeaseLibraryPlan[]}>('library')).plans
 }

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Download, ExternalLink, FilePenLine, FolderUp, Loader2, Search } from 'lucide-react'
+import { CheckCircle2, Download, ExternalLink, FilePenLine, FolderUp, Loader2, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import LeaseEditor from '../components/LeaseEditor'
 import LeasePdfPreview from '../components/LeasePdfPreview'
 import { useAuth } from '../context/AuthContext'
 import type { FileResult } from '../lib/api'
-import { generateLeaseReview, leaseLibrary, leaseProjects, leaseReviewFile, listLeaseJobs, locateLeaseDrawing, publishLeasePlan, type LeaseJob, type LeaseLibraryPlan, type LeaseReview } from '../lib/leasePlanApi'
+import { deleteLeasePlan, generateLeaseReview, leaseLibrary, leaseProjects, leaseReviewFile, listLeaseJobs, locateLeaseDrawing, publishLeasePlan, type LeaseJob, type LeaseLibraryPlan, type LeaseReview } from '../lib/leasePlanApi'
 
 const inputClass = 'mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-jade-500'
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg bg-jade-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-jade-700 disabled:cursor-not-allowed disabled:opacity-50'
+const dangerClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50'
 const secondaryClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50'
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Indian/Mauritius', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 
@@ -108,6 +109,20 @@ export default function LeasePlans() {
     previewRef.current = URL.createObjectURL(blob)
     setPreview(previewRef.current); setReview(item)
   }
+  // Permanent: the review's DWG, PDF and editor copy go, and nothing keeps a
+  // backup. The source drawing in SharePoint is never touched, so a deleted
+  // plan can always be generated again. Filed plans are refused by the API.
+  async function removePlan(item: LeaseReview) {
+    const name = `${item.project || 'Palm Square'} / ${item.unit || 'F18'} — ${item.tenant}, ${item.date}`
+    if (!window.confirm(`Delete ${name}?\n\nIts DWG and PDF are removed for good. The source drawing in SharePoint is not affected, so you can prepare the plan again.`)) return
+    await act('Deleting plan…', async () => {
+      await deleteLeasePlan(item.id)
+      if (previewRef.current) URL.revokeObjectURL(previewRef.current)
+      previewRef.current = ''
+      setPreview(''); setReview(null)
+      await refresh()
+    })
+  }
   async function download(kind: 'dwg' | 'pdf') {
     if (!review) return
     const blob = await leaseReviewFile(review, kind)
@@ -173,7 +188,7 @@ export default function LeasePlans() {
           <div className="border-b border-gray-200 p-5"><h2 className="font-semibold text-gray-900">Review your plan</h2><p className="mt-1 text-sm text-gray-500">Check the tenant, date, unit outline and drawing before using it.</p></div>
           {reviews.length > 0 && <div className="border-b border-gray-200 p-4"><label className="block text-sm text-gray-700">Your saved reviews<select className={inputClass} value={review?.id ?? ''} disabled={!!busy} onChange={e => { const item = reviews.find(r => r.id === e.target.value); if (item) void act('Opening review…', () => showReview(item)) }}><option value="" disabled>Choose a review set</option>{reviews.map(r => <option value={r.id} key={r.id}>{r.project || 'Palm Square'} / {r.unit || 'F18'} — {r.tenant} — {r.date} — {new Date(r.createdAt).toLocaleTimeString()}</option>)}</select></label></div>}
           {review ? <>
-            <div className="space-y-3 p-5"><div className="flex flex-wrap gap-2">{mine && <button className={secondaryClass} disabled={!!busy || jobs.some(j => ['uploading','processing'].includes(j.status))} onClick={() => setEditing(true)}><FilePenLine size={16} /> Edit highlight and text</button>}<button className={secondaryClass} disabled={!!busy} onClick={() => void act('Downloading PDF…', () => download('pdf'))}><Download size={16} /> Download PDF</button><button className={secondaryClass} disabled={!!busy} onClick={() => void act('Downloading DWG…', () => download('dwg'))}><Download size={16} /> Download DWG</button>{(mine || isAdmin) && !publication && <button className={buttonClass} disabled={!!busy} onClick={() => void act('Filing to SharePoint…', async () => { await publishLeasePlan(review.id); await refresh() })}><FolderUp size={17} /> Save to SharePoint</button>}{filedPdfUrl && <a className={secondaryClass} href={filedPdfUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open in SharePoint</a>}</div><p className="text-sm font-medium text-gray-700">{review.paper}</p>{publication ? <p className="break-words text-xs text-gray-600">Filed in SharePoint under {publication.folder}</p> : <p className="break-words text-xs text-gray-500">Not filed to SharePoint yet. Filing saves a copy of this DWG and PDF into the library — the source drawing is never changed.</p>}<ul className="space-y-1 text-xs text-gray-600">{review.checks.map(check => <li key={check} className="flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 text-jade-600" />{check}</li>)}</ul></div>
+            <div className="space-y-3 p-5"><div className="flex flex-wrap gap-2">{mine && <button className={secondaryClass} disabled={!!busy || jobs.some(j => ['uploading','processing'].includes(j.status))} onClick={() => setEditing(true)}><FilePenLine size={16} /> Edit highlight and text</button>}<button className={secondaryClass} disabled={!!busy} onClick={() => void act('Downloading PDF…', () => download('pdf'))}><Download size={16} /> Download PDF</button><button className={secondaryClass} disabled={!!busy} onClick={() => void act('Downloading DWG…', () => download('dwg'))}><Download size={16} /> Download DWG</button>{(mine || isAdmin) && !publication && <button className={buttonClass} disabled={!!busy} onClick={() => void act('Filing to SharePoint…', async () => { await publishLeasePlan(review.id); await refresh() })}><FolderUp size={17} /> Save to SharePoint</button>}{filedPdfUrl && <a className={secondaryClass} href={filedPdfUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} /> Open in SharePoint</a>}{mine && !publication && <button className={dangerClass} disabled={!!busy || jobs.some(j => ['uploading','processing'].includes(j.status))} onClick={() => void removePlan(review)}><Trash2 size={16} /> Delete</button>}</div><p className="text-sm font-medium text-gray-700">{review.paper}</p>{publication ? <p className="break-words text-xs text-gray-600">Filed in SharePoint under {publication.folder}</p> : <p className="break-words text-xs text-gray-500">Not filed to SharePoint yet. Filing saves a copy of this DWG and PDF into the library — the source drawing is never changed.</p>}<ul className="space-y-1 text-xs text-gray-600">{review.checks.map(check => <li key={check} className="flex items-start gap-2"><CheckCircle2 size={14} className="shrink-0 text-jade-600" />{check}</li>)}</ul></div>
             <LeasePdfPreview url={preview} />
           </> : <div className="flex min-h-[500px] flex-col items-center justify-center px-8 text-center"><FilePenLine size={42} strokeWidth={1} className="text-gray-400" /><p className="mt-5 font-medium text-gray-700">Your lease plan will appear here</p><p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">Locate the source drawing, enter the tenant and date, then save the review set.</p></div>}
         </section>

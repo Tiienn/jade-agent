@@ -40,6 +40,17 @@ minutes the API marks them failed and releases the account's processing slot.
 The user can prepare a new review. This is bounded background execution, not a
 persistent queue with automatic retry. Output copies never overwrite SharePoint.
 
+## Deleting a plan
+
+`/api/lease` action `delete` permanently removes one of the caller's own plans:
+the row first, then its DWG, PDF and editor files, so a failure part-way leaves
+invisible files rather than a listed plan with none. It refuses a plan that is
+filed in SharePoint (its row is the only record of that copy), one still
+processing, and one an edit is still processing from; the delete repeats those
+conditions so nothing filed or picked up in between is removed. Anyone else's
+plan answers 404, as for every other write. The source drawing is never touched,
+so a deleted plan can be prepared again.
+
 ## Fonts and tenant labels
 
 The sandbox installs Liberation Sans Narrow under Arial Narrow's Windows file

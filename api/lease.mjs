@@ -80,6 +80,25 @@ export default async function handler(req,res) {
   // Reading a finished plan no longer requires owning it. A job that is not
   // ready stays invisible to everyone else, including the fact that it exists.
   if (job.user_id!==uid && !(action==='file' && job.status==='ready')) throw fail(404,'Review not found.')
+  if (action==='delete') {
+   // Your own plan only (the ownership guard above already answers 404 for
+   // anyone else's), and only one that nothing still depends on:
+   // - a filed plan's row is the only record of its copy in SharePoint;
+   // - a job still running would upload its results after the row is gone;
+   // - an edit still running reads this plan as its source.
+   if (['uploading','processing'].includes(job.status)) throw fail(409,'This plan is still processing. Wait for it to finish, then delete it.')
+   if (job.published_at) throw fail(409,'This plan is filed in SharePoint, so it is kept as the record of that copy.')
+   const editing=checked(await db.from('lease_jobs').select('id').eq('user_id',uid).in('status',['uploading','processing']).eq('request->>reviewId',job.id).limit(1))
+   if (editing.length) throw fail(409,'An edit of this plan is still processing. Wait for it to finish, then delete it.')
+   // The same conditions again in the delete itself, so a plan filed or picked
+   // up between the checks above and this statement is not removed.
+   const removed=checked(await db.from('lease_jobs').delete().eq('id',job.id).eq('user_id',uid).is('published_at',null).in('status',['ready','failed']).select('id'))
+   if (!removed.length) throw fail(409,'This plan changed while it was being deleted. Reload and try again.')
+   // Row first, files second: if removing the files fails, nothing visible
+   // points at them, whereas the other order could list a plan with no files.
+   await db.storage.from(bucket).remove(['result.dwg','result.pdf','editor.json','source.dwg'].map(file=>key(job,file))).catch(()=>{})
+   return res.status(200).json({ok:true})
+  }
   if (action==='file') {
    if(job.status!=='ready'||!['pdf','dwg','editor'].includes(body.kind)) throw fail(404,'Review file not available.')
    // Colleagues read the finished DWG and PDF. The editor scene is not a
