@@ -109,6 +109,43 @@ def title_parts(text, unit):
     return None
 
 
+def tenant_labels(drawing, old_tenant, outline, title_handle):
+    """Plan labels that name the outgoing tenant inside the leased unit.
+
+    The title block is not the only place a drawing names its tenant: drafters
+    also letter it inside the unit, under the unit number ("S08 B" over
+    "Billard Blitz Ltd"). Changing the title alone left the plan naming the
+    previous tenant on the very area being leased to someone else.
+
+    Only an exact match of the outgoing name, and only INSIDE the unit outline,
+    is taken. The same company often leases a neighbouring unit on the same
+    sheet -- Billard Blitz holds S08A beside S08B -- and that label must keep
+    its name. Anything looser would rewrite a lease plan for a unit nobody
+    asked about.
+    """
+    name = ' '.join(old_tenant.split()).casefold()
+    if not name:
+        return []
+    return [e for e in drawing.get('entities', [])
+            if e.get('geometry', {}).get('type') == 'text' and e['handle'] != title_handle
+            and ' '.join(e['geometry']['value'].split()).casefold() == name
+            and contains(outline['geometry']['vertices'], e['geometry']['insert'])]
+
+
+def label_width(old, new, width):
+    """Width factor that keeps a longer name in the old label's footprint.
+
+    Never wider than the source, and never narrower than half width -- below
+    that the lettering stops being legible, so the label is allowed to run long
+    and the review checklist says so instead of failing the whole plan.
+    Returns (width factor, whether it fits the original footprint).
+    """
+    if len(new) <= len(old):
+        return width, True
+    needed = width * len(old) / len(new)
+    return min(width, max(0.5, needed)), needed >= 0.5
+
+
 def outline_vertices(entity):
     vertices = entity.get('geometry', {}).get('vertices', [])
     if len(vertices) > 3 and equivalent(vertices[0]['p'], vertices[-1]['p']):
@@ -127,6 +164,33 @@ def effective_color(drawing, entity):
     if color == 'ByLayer':
         return next((layer.get('color') for layer in drawing.get('layers', []) if layer['name'] == entity.get('layer')), color)
     return color
+
+
+def missing_fonts(styles, drawing):
+    """TrueType fonts the drawing's text asks for that the engine could not find.
+
+    CADCraft draws such text in its own stroke font, which is much wider than,
+    say, Arial Narrow -- the plan still validates, but its lettering looks wrong.
+    Only styles some text actually uses are reported. SHX fonts are left out:
+    CADCraft never reads them, and its stroke font is their intended stand-in.
+    """
+    used = {e['geometry'].get('style') for e in drawing.get('entities', []) if e.get('geometry', {}).get('type') == 'text'}
+    return sorted({s['font'] for s in styles if s.get('name') in used and not s.get('trueType')
+                   and s.get('font', '').lower().endswith(('.ttf', '.otf', '.ttc'))}, key=str.lower)
+
+
+def font_checks(missing):
+    return [f'Font not available, drawn in a substitute: {", ".join(missing)}'] if missing else []
+
+
+def label_checks(labels, old_tenant, fits):
+    """Checklist lines for the in-plan tenant name -- including when none was found."""
+    if labels:
+        lines = [f'Tenant name in the plan updated ({len(labels)} label{"s" if len(labels) > 1 else ""})']
+        return lines + ([] if fits else ['Tenant name in the plan is longer than before: check it fits the unit'])
+    if old_tenant.strip():
+        return [f'"{old_tenant.strip()}" not found inside the unit: check the plan labels']
+    return []
 
 
 def identify(drawing, unit_number='F18', outline_handle=None):
@@ -252,6 +316,7 @@ def process(cad, root, data):
     cad.command('setvar', {'name': 'MEASUREMENT', 'value': 1})
     before = cad.inspect()
     title, date_entity, outline, scale = identify(before, unit)
+    unfound_fonts = missing_fonts(cad.command('style.list', {}).get('styles', []), before)
     parts = title_parts(title['geometry']['value'], unit)
     new_title = parts[1] + tenant + parts[3]
     # Keep the title within the verified source field width. Refuse illegibly long names.
@@ -260,10 +325,17 @@ def process(cad, root, data):
         raise ValueError('This tenant name is too long for the title block. Use a shorter approved name.')
     cad.command('properties.set', {'handles': [title['handle']], 'text': new_title, 'widthFactor': width})
     cad.command('properties.set', {'handles': [date_entity['handle']], 'text': date})
+    labels = tenant_labels(before, parts[2], outline, title['handle'])
+    label_fits = True
+    for label in labels:
+        factor, fits = label_width(label['geometry']['value'].strip(), tenant, label['geometry']['widthFactor'])
+        label_fits = label_fits and fits
+        cad.command('properties.set', {'handles': [label['handle']], 'text': tenant, 'widthFactor': factor})
+    changed = {title['handle'], date_entity['handle'], *(label['handle'] for label in labels)}
     updated = cad.inspect()
     expected = {e['handle']: e for e in before['entities']}
     for entity in updated['entities']:
-        if entity['handle'] not in (title['handle'], date_entity['handle']) and entity != expected.get(entity['handle']):
+        if entity['handle'] not in changed and entity != expected.get(entity['handle']):
             raise ValueError('Unexpected drawing change detected; export stopped.')
     if updated['entityCount'] != before['entityCount']:
         raise ValueError('Drawing object count changed unexpectedly.')
@@ -283,6 +355,9 @@ def process(cad, root, data):
     vt, vd, vo, verified_scale = identify(verified, unit)
     if vt['geometry']['value'] != new_title or vd['geometry']['value'] != date or verified['counts'] != before['counts'] or verified_scale != scale:
         raise ValueError('Saved DWG failed the title, date, or object-count checks.')
+    reopened_by_handle = {e['handle']: e for e in verified['entities']}
+    if any(reopened_by_handle.get(label['handle'], {}).get('geometry', {}).get('value') != tenant for label in labels):
+        raise ValueError('Saved DWG failed the tenant name check in the plan.')
     verified_styles = {name: cad.command('dimstyle.list', {'name': name})['style'] for name in style_names}
     if not equivalent(styles, verified_styles):
         raise ValueError('Saved DWG changed dimension styles.')
@@ -294,7 +369,7 @@ def process(cad, root, data):
         raise ValueError('CADCraft did not produce valid review files.')
     if reference_pdf.read_bytes() != pdf.read_bytes():
         raise ValueError('Saved DWG changed the PDF output. Manual review is required.')
-    result = {'id': request_id, 'unit': unit, 'project': project, 'tenant': tenant, 'date': date, 'source': source, 'sourceSha256': hashlib.sha256(raw).hexdigest(), 'requestFingerprint': fingerprint, 'folder': str(folder), 'dwg': dwg.name, 'pdf': pdf.name, 'paper': f'{paper} {"landscape" if landscape else "portrait"}, 1:{scale}', 'checks': ['Tenant and date verified after reopening DWG', 'Drawing object counts preserved', 'Dimension geometry and styles verified', 'PDF identical before and after DWG save', f'Existing {unit} outline preserved'], 'createdAt': dt.datetime.now(dt.timezone.utc).isoformat()}
+    result = {'id': request_id, 'unit': unit, 'project': project, 'tenant': tenant, 'date': date, 'source': source, 'sourceSha256': hashlib.sha256(raw).hexdigest(), 'requestFingerprint': fingerprint, 'folder': str(folder), 'dwg': dwg.name, 'pdf': pdf.name, 'paper': f'{paper} {"landscape" if landscape else "portrait"}, 1:{scale}', 'checks': ['Tenant and date verified after reopening DWG', 'Drawing object counts preserved', 'Dimension geometry and styles verified', 'PDF identical before and after DWG save', f'Existing {unit} outline preserved'] + label_checks(labels, parts[2], label_fits) + font_checks(unfound_fonts), 'createdAt': dt.datetime.now(dt.timezone.utc).isoformat()}
     manifest.write_text(json.dumps(result, indent=2))
     return result
 

@@ -40,6 +40,20 @@ minutes the API marks them failed and releases the account's processing slot.
 The user can prepare a new review. This is bounded background execution, not a
 persistent queue with automatic retry. Output copies never overwrite SharePoint.
 
+## Fonts and tenant labels
+
+The sandbox installs Liberation Sans Narrow under Arial Narrow's Windows file
+names (`ARIALN.TTF` and its variants) before the engine runs, so text in those
+styles renders at the widths the drafter set; without it CADCraft substitutes a
+much wider stroke font. The drawing's own style table is never changed. Any
+other TrueType font a drawing's text needs but the sandbox lacks is listed on the
+review checklist. Details and checksums: `server/lease/fonts/README.md`.
+
+Generation also renames the outgoing tenant inside the plan, not only in the
+title block: text exactly matching the old title's tenant, inside the unit's
+outline. A label for the same tenant in another unit is left alone, and the
+checklist says when no label was found.
+
 ## Where a finished plan lives
 
 A finished plan is a company record, not a personal one. Every active member of

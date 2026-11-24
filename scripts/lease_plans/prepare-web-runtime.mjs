@@ -6,6 +6,9 @@ for (const [name,source] of Object.entries({
  'studio_edits.py':'apps/jade-lease-studio/worker/studio_edits.py',
  'run_job.py':'server/lease/run_job.py',
 })) await copyFile(source,'server/lease/runtime/'+name)
+// Fonts the cloud CAD engine resolves by name (see server/lease/fonts/README.md).
+await mkdir('server/lease/runtime/fonts',{recursive:true})
+for (const name of ['LiberationSansNarrow-Regular.ttf','LiberationSansNarrow-Bold.ttf','LiberationSansNarrow-Italic.ttf','LiberationSansNarrow-BoldItalic.ttf']) await copyFile('server/lease/fonts/'+name,'server/lease/runtime/fonts/'+name)
 await mkdir('public/lease-editor',{recursive:true})
 for (const name of ['editor.css','editor.html','editor.js']) await copyFile('apps/jade-lease-studio/ui/'+name,'public/lease-editor/'+name)
 // The web build communicates only with its same-origin parent, never a local helper.

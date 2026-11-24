@@ -4,8 +4,23 @@ import path from 'node:path'
 
 const engine = '/tmp/cad/cadcraft-0.7.0-linux-x86_64/bin/cadcraft-cli'
 // Fixed, checksummed upstream binary. No user-controlled commands or download URLs.
-const install = 'curl -fsSL --max-time 45 https://github.com/storytold/cadcraft/releases/download/v0.7.0/cadcraft-0.7.0-linux-x86_64.tar.gz -o /tmp/cad.tar.gz && echo "cf8d4aa86d046f34eb770ae6cd2df3eee17d1f3b129257f1558543046c955cc0  /tmp/cad.tar.gz" | sha256sum -c - && mkdir /tmp/cad && tar -xzf /tmp/cad.tar.gz -C /tmp/cad'
+const install = 'curl -fsSL --max-time 45 https://github.com/storytold/cadcraft/releases/download/v0.7.0/cadcraft-0.7.0-linux-x86_64.tar.gz -o /tmp/cad.tar.gz && echo "cf8d4aa86d046f34eb770ae6cd2df3eee17d1f3b129257f1558543046c955cc0  /tmp/cad.tar.gz" | sha256sum -c - && mkdir /tmp/cad && tar -xzf /tmp/cad.tar.gz -C /tmp/cad && mkdir -p /tmp/cadhome/.local/share/fonts'
 const sourceLimit = 24 * 1024 * 1024
+// The drawings' text styles ask for Arial Narrow by its Windows file names, and
+// CADCraft looks fonts up by name in ~/.local/share/fonts among others. Without
+// them it draws that text in its much wider stroke font, which reads as
+// oversized lettering. Liberation Sans Narrow has Arial Narrow's widths; see
+// server/lease/fonts/README.md. Lower-case names too: Linux file names are
+// case-sensitive and drawings are not consistent about it.
+const fontHome = '/tmp/cadhome'
+const fontFiles = [['ARIALN.TTF','LiberationSansNarrow-Regular.ttf'],['ARIALNB.TTF','LiberationSansNarrow-Bold.ttf'],['ARIALNI.TTF','LiberationSansNarrow-Italic.ttf'],['ARIALNBI.TTF','LiberationSansNarrow-BoldItalic.ttf']]
+async function sandboxFonts() {
+  const runtime = path.join(process.cwd(), 'server/lease/runtime/fonts')
+  return (await Promise.all(fontFiles.map(async ([name, file]) => {
+    const content = await readFile(path.join(runtime, file))
+    return [name, name.toLowerCase()].map(alias => ({ path: `${fontHome}/.local/share/fonts/${alias}`, content }))
+  }))).flat()
+}
 export const bucket = 'lease-plans'
 export const key = (job, file) => `${job.user_id}/${job.id}/${file}`
 export function checked(result) { if (result.error) throw result.error; return result.data }
@@ -84,8 +99,9 @@ export async function runJob(db, job, { credentials = {}, source } = {}) {
       ...await Promise.all(files.map(async name => ({path:'/tmp/'+name,content:await readFile(path.join(process.cwd(),'server/lease/runtime',name))}))),
       {path:'/tmp/source.dwg',content:bytes},
       {path:'/tmp/input.json',content:Buffer.from(JSON.stringify(input))},
+      ...await sandboxFonts(),
     ])
-    const result = await sandbox.runCommand({cmd:'python3',args:['/tmp/run_job.py',engine]})
+    const result = await sandbox.runCommand({cmd:'env',args:[`HOME=${fontHome}`,'python3','/tmp/run_job.py',engine]})
     if (result.exitCode !== 0) throw new Error('The drawing engine stopped before validation finished. Your previous review is unchanged.')
     const outcome = JSON.parse((await sandbox.readFileToBuffer({path:'/tmp/outcome.json'})).toString())
     if (!outcome.ok) throw new Error(outcome.error)

@@ -123,8 +123,6 @@ class HttpTests(unittest.TestCase):
         caught.exception.close()
 
 
-if __name__ == '__main__':
-    unittest.main()
 
 class AdditionalTemplateTests(unittest.TestCase):
     def test_combined_units_and_empty_tenant(self):
@@ -149,3 +147,69 @@ class AdditionalTemplateTests(unittest.TestCase):
         self.assertEqual(effective_color({'layers':[{'name':'Highlight','color':'Red'}]},entity),'Red')
         entity['geometry']['vertices'][-1]['p']['x']=1
         self.assertFalse(closed_outline(entity))
+
+
+class TenantLabelTests(unittest.TestCase):
+    """The tenant is named in the plan as well as in the title block (Le Manhattan S08B)."""
+
+    def setUp(self):
+        square = [{'p': {'x': x, 'y': y}} for x, y in [(0, 0), (100, 0), (100, 100), (0, 100)]]
+        self.outline = {'handle': 'O', 'geometry': {'vertices': square, 'closed': True}}
+        text = lambda h, v, x, y: {'handle': h, 'geometry': {'type': 'text', 'value': v, 'insert': {'x': x, 'y': y}, 'widthFactor': 1.0}}
+        self.drawing = {'entities': [
+            text('T', 'B: S08B - Billard Blitz Ltd - Lease Agreement', 500, 500),
+            text('U', 'S08 B', 40, 60),
+            text('L', 'Billard  Blitz LTD ', 40, 50),       # inside S08B: whitespace and case differ
+            text('N', 'Billard Blitz Ltd', 150, 50),        # same company, next unit: must keep its name
+            text('P', 'Billard Blitz Ltd (Mezzanine)', 40, 40),  # not an exact match
+        ]}
+
+    def test_only_the_outgoing_name_inside_the_unit(self):
+        from cadcraft_bridge import tenant_labels
+        found = tenant_labels(self.drawing, 'Billard Blitz Ltd', self.outline, 'T')
+        self.assertEqual([e['handle'] for e in found], ['L'])
+
+    def test_blank_title_tenant_touches_nothing(self):
+        from cadcraft_bridge import tenant_labels
+        self.assertEqual(tenant_labels(self.drawing, '', self.outline, 'T'), [])
+        self.assertEqual(tenant_labels(self.drawing, '   ', self.outline, 'T'), [])
+
+    def test_title_block_is_never_a_label(self):
+        from cadcraft_bridge import tenant_labels
+        self.drawing['entities'][0]['geometry']['insert'] = {'x': 50, 'y': 50}
+        self.drawing['entities'][0]['geometry']['value'] = 'Billard Blitz Ltd'
+        self.assertNotIn('T', [e['handle'] for e in tenant_labels(self.drawing, 'Billard Blitz Ltd', self.outline, 'T')])
+
+    def test_label_width(self):
+        from cadcraft_bridge import label_width
+        self.assertEqual(label_width('Billard Blitz Ltd', 'Sportime Ltd', 1.0), (1.0, True))      # shorter: untouched
+        self.assertEqual(label_width('ABCD', 'ABCDEFGH', 0.8), (0.5, False))   # needs 0.4: floor at 0.5
+        width, fits = label_width('ABCDEF', 'ABCDEFGH', 1.0)
+        self.assertAlmostEqual(width, 0.75); self.assertTrue(fits)
+        self.assertEqual(label_width('AB', 'ABCDEFGH', 0.4), (0.4, False))                        # never wider than source
+
+    def test_checklist_says_what_happened(self):
+        from cadcraft_bridge import label_checks
+        self.assertEqual(label_checks([{}], 'X Ltd', True), ['Tenant name in the plan updated (1 label)'])
+        self.assertEqual(len(label_checks([{}, {}], 'X Ltd', False)), 2)
+        self.assertIn('not found inside the unit', label_checks([], 'Billard Blitz Ltd', True)[0])
+        self.assertEqual(label_checks([], '', True), [])
+
+
+
+class FontTests(unittest.TestCase):
+    def test_reports_only_used_unresolved_truetype_fonts(self):
+        from cadcraft_bridge import missing_fonts, font_checks
+        styles = [{'name': 'STYLE2', 'font': 'ARIALN.TTF', 'trueType': False},   # used, missing: report
+                  {'name': 'arial', 'font': 'ARIALN.TTF', 'trueType': False},    # same file: once
+                  {'name': 'Myriad', 'font': 'monos.ttf', 'trueType': False},    # unused: ignore
+                  {'name': 'RomanS', 'font': 'romans.shx', 'trueType': False},   # SHX: ignore
+                  {'name': 'OK', 'font': 'ARIALN.TTF', 'trueType': True}]        # resolved: ignore
+        texts = {'entities': [{'geometry': {'type': 'text', 'style': s}} for s in ('STYLE2', 'arial', 'RomanS', 'OK')]}
+        self.assertEqual(missing_fonts(styles, texts), ['ARIALN.TTF'])
+        self.assertEqual(font_checks([]), [])
+        self.assertEqual(font_checks(['ARIALN.TTF']), ['Font not available, drawn in a substitute: ARIALN.TTF'])
+
+
+if __name__ == '__main__':
+    unittest.main()

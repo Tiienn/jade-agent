@@ -30,3 +30,6 @@ apps/jade-lease-studio/bin/
 apps/jade-lease-studio/obj/
 apps/jade-lease-studio/.cache/
 apps/jade-lease-studio/artifacts/
+
+# Copied from server/lease/fonts by the build; keep one copy of the font binaries in git
+server/lease/runtime/fonts/
